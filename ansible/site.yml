@@ -83,6 +83,37 @@
       loop: "{{ xray_conflicting_all_container_ids }}"
       when: xray_conflicting_all_container_ids | length > 0
 
+    - name: Discover conflicting Xray Docker networks
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker network ls --format "{{'{{.Name}}'}}" \
+          | awk 'BEGIN{IGNORECASE=1} /xray/ {print $1}'
+      register: xray_conflicting_networks_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Collect conflicting Xray Docker network names
+      ansible.builtin.set_fact:
+        xray_conflicting_network_names: >-
+          {{
+            (xray_conflicting_networks_raw.stdout_lines | default([]))
+            | reject('equalto', '')
+            | unique
+            | list
+          }}
+
+    - name: Remove conflicting Xray Docker networks
+      ansible.builtin.shell: |
+        set -o pipefail
+        if ! docker network inspect "{{ item }}" >/dev/null 2>&1; then
+          exit 0
+        fi
+        docker network rm "{{ item }}"
+      args:
+        executable: /bin/bash
+      loop: "{{ xray_conflicting_network_names }}"
+      when: xray_conflicting_network_names | length > 0
+
     - name: Determine effective Reality SNI
       ansible.builtin.set_fact:
         xray_effective_sni: "{{ (xray_sni | default('', true) | trim) or (xray_sni_candidates | random) }}"
