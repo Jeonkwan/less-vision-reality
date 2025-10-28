@@ -80,7 +80,7 @@
     msg:
       - "Inspect rc={{ xray_deploy_container_state.rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
       - "Inspect stderr={{ xray_deploy_container_state.stderr | default('') | trim }}"
-  verbosity: 1
+    verbosity: 1
 
 - name: Attempt to recover Xray deployment when container is missing or stopped
   when: xray_deploy_container_state.rc != 0 or xray_deploy_container_status != 'running'
@@ -107,7 +107,7 @@
         msg:
           - "docker compose up stdout: {{ xray_deploy_compose_recover.stdout | default('', true) | trim }}"
           - "docker compose up stderr: {{ xray_deploy_compose_recover.stderr | default('', true) | trim }}"
-      verbosity: 1
+        verbosity: 1
 
     - name: Wait for Xray container to stabilize after recovery
       ansible.builtin.pause:
@@ -153,7 +153,7 @@
         msg:
           - "Post-recovery inspect rc={{ xray_deploy_container_state.rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
           - "Post-recovery inspect stderr={{ xray_deploy_container_state.stderr | default('') | trim }}"
-      verbosity: 1
+        verbosity: 1
 
 - name: Capture recent Xray container logs on failure
   ansible.builtin.command:
