@@ -9,49 +9,21 @@ runs:
       uses: docker://docker.io/library/alpine:3.19
       with:
         entrypoint: /bin/sh
-        args: |
-          -c '
-            set -eu
-            apk add --no-cache util-linux >/dev/null 2>&1
-            UUID=$(uuidgen | tr -d "\r")
-            printf "value=%s\n" "$UUID" >>"$GITHUB_OUTPUT"
-          '
+        args: /github/workspace/.github/actions/generate-credentials/scripts/uuid.sh
 
     - name: Generate short IDs
       id: short_ids
       uses: docker://docker.io/library/alpine:3.19
       with:
         entrypoint: /bin/sh
-        args: |
-          -c '
-            set -eu
-            apk add --no-cache openssl >/dev/null 2>&1
-            IDS=""
-            for _ in 1 2 3; do
-              ID=$(openssl rand -hex 8 | tr -d "\r\n")
-              if [ -z "$IDS" ]; then
-                IDS="$ID"
-              else
-                IDS="$IDS $ID"
-              fi
-            done
-            printf "value=%s\n" "$IDS" >>"$GITHUB_OUTPUT"
-          '
+        args: /github/workspace/.github/actions/generate-credentials/scripts/short-ids.sh
 
     - name: Generate Xray key pair
       id: xray_keys
       uses: docker://ghcr.io/xtls/xray-core:latest
       with:
         entrypoint: /bin/sh
-        args: |
-          -c '
-            set -eu
-            XRAY_KEYS=$(xray x25519)
-            PRIVATE_KEY=$(printf "%s\n" "$XRAY_KEYS" | awk -F": " "/Private key/{print \$2}")
-            PUBLIC_KEY=$(printf "%s\n" "$XRAY_KEYS" | awk -F": " "/Public key/{print \$2}")
-            printf "private=%s\n" "$PRIVATE_KEY" >>"$GITHUB_OUTPUT"
-            printf "public=%s\n" "$PUBLIC_KEY" >>"$GITHUB_OUTPUT"
-          '
+        args: /github/workspace/.github/actions/generate-credentials/scripts/xray-keys.sh
 
     - name: Publish credentials
       shell: sh
