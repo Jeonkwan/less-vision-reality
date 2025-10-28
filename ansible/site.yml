@@ -27,20 +27,39 @@
       loop: "{{ xray_required_vars }}"
 
   tasks:
-    - name: Discover conflicting Xray containers
+    - name: Discover running conflicting Xray containers
       ansible.builtin.shell: |
         set -o pipefail
         docker ps --format "{{'{{.ID}} {{.Image}} {{.Ports}}'}}" \
           | awk 'BEGIN{IGNORECASE=1} /xray/ || /443->/ {print $1}'
-      register: xray_conflicting_containers_raw
+      register: xray_conflicting_running_containers_raw
       changed_when: false
       failed_when: false
 
-    - name: Collect conflicting Xray container IDs
+    - name: Collect running conflicting Xray container IDs
       ansible.builtin.set_fact:
-        xray_conflicting_container_ids: >-
+        xray_conflicting_running_container_ids: >-
           {{
-            (xray_conflicting_containers_raw.stdout_lines | default([]))
+            (xray_conflicting_running_containers_raw.stdout_lines | default([]))
+            | reject('equalto', '')
+            | unique
+            | list
+          }}
+
+    - name: Discover existing conflicting Xray containers
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker ps -a --format "{{'{{.ID}} {{.Image}} {{.Ports}}'}}" \
+          | awk 'BEGIN{IGNORECASE=1} /xray/ || /443->/ {print $1}'
+      register: xray_conflicting_all_containers_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Collect all conflicting Xray container IDs
+      ansible.builtin.set_fact:
+        xray_conflicting_all_container_ids: >-
+          {{
+            (xray_conflicting_all_containers_raw.stdout_lines | default([]))
             | reject('equalto', '')
             | unique
             | list
@@ -52,8 +71,8 @@
           - docker
           - stop
           - "{{ item }}"
-      loop: "{{ xray_conflicting_container_ids }}"
-      when: xray_conflicting_container_ids | length > 0
+      loop: "{{ xray_conflicting_running_container_ids }}"
+      when: xray_conflicting_running_container_ids | length > 0
 
     - name: Remove conflicting Xray containers
       ansible.builtin.command:
@@ -61,8 +80,8 @@
           - docker
           - rm
           - "{{ item }}"
-      loop: "{{ xray_conflicting_container_ids }}"
-      when: xray_conflicting_container_ids | length > 0
+      loop: "{{ xray_conflicting_all_container_ids }}"
+      when: xray_conflicting_all_container_ids | length > 0
 
     - name: Determine effective Reality SNI
       ansible.builtin.set_fact:
