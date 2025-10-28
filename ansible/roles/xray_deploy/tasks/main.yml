@@ -17,7 +17,7 @@
     state: directory
     owner: root
     group: root
-    mode: "0750"
+    mode: "0755"
 
 - name: Template Xray Reality/Vision configuration
   ansible.builtin.template:
@@ -25,7 +25,7 @@
     dest: "{{ xray_config_path }}/{{ xray_config_file }}"
     owner: root
     group: root
-    mode: "0640"
+    mode: "0644"
   notify: Apply docker compose deployment
 
 - name: Template docker compose definition
@@ -42,7 +42,7 @@
 
 - name: Wait for Xray container to stabilize
   ansible.builtin.pause:
-    seconds: 30
+    seconds: 60
 
 - name: Inspect Xray container state
   ansible.builtin.command:
@@ -85,7 +85,7 @@
       - docker
       - logs
       - "--tail"
-      - "100"
+      - "300"
       - "{{ xray_service_name }}"
   register: xray_deploy_container_logs
   changed_when: false
@@ -96,7 +96,7 @@
   ansible.builtin.debug:
     msg:
       - "Xray container inspect rc={{ xray_deploy_container_state.rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
-      - "Recent logs (last 100 lines):"
+      - "Recent logs (last 300 lines):"
       - "{{ (xray_deploy_container_logs.stdout | default('', true) | trim) or '[no logs captured]' }}"
   when: xray_deploy_container_state.rc != 0 or xray_deploy_container_status != 'running'
 
@@ -106,10 +106,10 @@
       - xray_deploy_container_state.rc == 0
       - xray_deploy_container_status == 'running'
     fail_msg: >-
-      Xray container failed to reach the running state within 30 seconds.
+      Xray container failed to reach the running state within 60 seconds.
       Inspect returned rc={{ xray_deploy_container_state.rc }}, status={{ xray_deploy_container_status }},
       health={{ xray_deploy_container_health }}, stderr="{{ xray_deploy_container_state.stderr | default('') | trim }}".
-      Recent logs (last 100 lines):
+      Recent logs (last 300 lines):
       {{ (xray_deploy_container_logs.stdout | default('', true) | trim) or '[no logs captured]' }}
     success_msg: >-
       Xray container is running (status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}).
