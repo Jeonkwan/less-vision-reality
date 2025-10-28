@@ -20,7 +20,7 @@ runs:
 
     - name: Generate Xray key pair
       id: xray_keys
-      uses: docker://ghcr.io/xtls/xray-core:latest
+      uses: docker://docker.io/teddysun/xray:latest
       with:
         entrypoint: /bin/sh
         args: /github/workspace/.github/actions/generate-credentials/scripts/xray-keys.sh
