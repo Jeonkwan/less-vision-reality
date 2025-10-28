@@ -2,6 +2,13 @@
 
 This playbook deploys the Xray Vision/Reality service with Docker Compose while following the lightweight container style used in `Jeonkwan/less-vision`.
 
+The runtime defaults to the official `ghcr.io/xtls/xray-core:25.10.15` image.
+Configuration rendered under `/opt/xray/config` is mounted into
+`/usr/local/etc/xray` inside the container to align with the image entrypoint.
+When upgrading to a newer release, bump the tag in `group_vars/all.yml` and
+verify the updated container still accepts the configuration layout described
+here.
+
 ## Files
 - `inventory.yml` – sample inventory with placeholder host information.
 - `group_vars/all.yml` – documented defaults and examples for required variables (UUID, short IDs, keys, SNI).
@@ -18,6 +25,12 @@ This playbook deploys the Xray Vision/Reality service with Docker Compose while 
    export XRAY_PRIVATE_KEY="<private-key>"
    export XRAY_PUBLIC_KEY="<public-key>"
    ansible-playbook -i inventory.yml site.yml
+   ```
+   After the first deployment you can re-run syntax validation from the host:
+
+   ```bash
+   docker compose -f /opt/xray/docker-compose.yml exec xray \
+     xray -test -confdir /usr/local/etc/xray
    ```
 3. To stop, reload, or recreate the deployment run the playbook with the appropriate tag:
    - `ansible-playbook -i inventory.yml site.yml -t xray_down`

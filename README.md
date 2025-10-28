@@ -23,6 +23,19 @@ Behind the scenes the workflow pulls lightweight Alpine utility containers for e
 2. Update `ansible/inventory.yml` with your target hosts and overrides.
 3. Run `ansible-playbook -i ansible/inventory.yml ansible/site.yml` to apply the configuration.
 
+The generated Docker Compose definition pins the runtime to the official
+`ghcr.io/xtls/xray-core:25.10.15` image and mounts the rendered configuration
+directory into `/usr/local/etc/xray` inside the container. When upstream
+releases new versions, update the image tag in `ansible/group_vars/all.yml` and
+refresh the accompanying documentation so operators can track the change.
+
+After deployment you can confirm the configuration is valid with:
+
+```bash
+docker compose -f /opt/xray/docker-compose.yml exec xray \
+  xray -test -confdir /usr/local/etc/xray
+```
+
 Ensure the UUID, short IDs, and Reality keys you obtained from the credentials workflow are provided through inventory variables, vaulted secrets, or environment overrides before running the playbook. If you omit the optional Reality SNI value, the playbook now selects a random decoy from the predefined candidate list.
 
 ## Repository Structure

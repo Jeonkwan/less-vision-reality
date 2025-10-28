@@ -14,7 +14,7 @@
 
 ## Current Architecture
 - **Automation Layer:** `ansible/site.yml` orchestrates validation, configuration rendering, Docker Compose generation, and service application. Templates live in `ansible/templates/`. Shared variables are demonstrated in `ansible/group_vars/all.yml`.
-- **Containerization Layer:** Runtime defined dynamically through `ansible/templates/docker-compose.yml.j2`, leveraging the public `ghcr.io/xtls/xray-core:latest` image and mounting generated configuration.
+- **Containerization Layer:** Runtime defined dynamically through `ansible/templates/docker-compose.yml.j2`, leveraging the official `ghcr.io/xtls/xray-core:25.10.15` image and mounting the rendered configuration directory at `/usr/local/etc/xray` inside the container.
 - **Configuration Inputs:** UUID, short IDs, Reality keys, and optional SNI values are surfaced as Ansible variables with environment overrides documented in `ansible/group_vars/all.yml`.
 - **Continuous Integration:** `.github/workflows/pr-check.yml` executes `ansible-playbook --syntax-check` during pull request validation using representative environment variables. Dedicated credential workflows (`.github/workflows/generate-credentials-manual.yml` and `.github/workflows/generate-credentials-pr.yml`) provide disposable UUIDs, short IDs, and Reality key pairs whether triggered manually or during pull requests.
 
@@ -39,6 +39,7 @@
 - **xray_reality_private_key / xray_reality_public_key:** Reality key pair expected from secure storage. Example fallbacks are placeholders; operators must supply real values via vault or environment variables (`XRAY_PRIVATE_KEY`, `XRAY_PUBLIC_KEY`).
 - **xray_sni:** Optional decoy SNI, defaulting to a random selection from the configured candidate list when empty.
 - **xray_container_image / ports / restart policy:** Infrastructure defaults that can be tuned per inventory to match deployment needs.
+- **xray_container_confdir:** Path inside the container where the rendered configuration directory is mounted (`/usr/local/etc/xray` by default to satisfy the official image entrypoint).
 
 ## Operational Flow
 1. Validate required secrets/IDs are provided and ensure `docker compose` CLI is installed.

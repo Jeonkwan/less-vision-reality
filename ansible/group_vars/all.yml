@@ -16,7 +16,11 @@ xray_service_root: /opt/xray
 xray_config_path: "{{ xray_service_root }}/config"
 xray_config_file: config.json
 xray_compose_file: "{{ xray_service_root }}/docker-compose.yml"
-xray_container_image: ghcr.io/xtls/xray-core:latest
+# Default to the official pinned Xray release. Bump this tag after reviewing
+# upstream release notes and update documentation accordingly.
+xray_container_image: ghcr.io/xtls/xray-core:25.10.15
+# Official image expects configuration under /usr/local/etc/xray.
+xray_container_confdir: /usr/local/etc/xray
 xray_restart_policy: unless-stopped
 xray_host_port: 443
 xray_container_port: 443
