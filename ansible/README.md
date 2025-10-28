@@ -26,7 +26,12 @@ here.
    export XRAY_PUBLIC_KEY="<public-key>"
    ansible-playbook -i inventory.yml site.yml
    ```
-   After the first deployment you can re-run syntax validation from the host:
+   Before rendering new configuration the playbook force-removes any existing
+   Xray container that matches `xray_service_name`, pauses for 30 seconds,
+   verifies the replacement is running, and prints the last 100 log lines
+   before failing when Docker reports a restart loop. You can re-run syntax
+   validation from the
+   host with:
 
    ```bash
    docker compose -f /opt/xray/docker-compose.yml exec xray \
@@ -42,3 +47,30 @@ The playbook regenerates configuration and re-applies `docker compose up -d --re
 ## Continuous Integration
 
 A GitHub Action (`.github/workflows/pr-check.yml`) runs `ansible-playbook --syntax-check` with representative environment values on every pull request so changes to the playbook or templates are validated automatically. Two companion workflows (`.github/workflows/generate-credentials-manual.yml` and `.github/workflows/generate-credentials-pr.yml`) reuse the same credential generation routine: the manual entry prompts operators for a descriptive run label, while the PR check automatically labels the run with the pull request number. The shared action orchestrates dedicated Alpine utility containers for UUIDs, OpenSSL short IDs, and the official `ghcr.io/xtls/xray-core:25.10.15` image for the key pair—normalizing both the legacy `Public key` and newer `Password` fields into the published Reality public key—to keep responsibilities isolated.
+
+## GitHub Deployment Workflow
+
+The deployment workflow (`.github/workflows/deploy.yml`) provides a turnkey path for applying `site.yml` from GitHub-hosted runners. Configure the GitHub environment that represents your stage (for example, `production`) with the same secrets you would export locally:
+
+| Secret | Injected environment variable | Playbook variable |
+| ------ | ----------------------------- | ----------------- |
+| `XRAY_UUID` | `XRAY_UUID` | `xray_uuid` |
+| `XRAY_SHORT_IDS` | `XRAY_SHORT_IDS` | `xray_short_ids` (comma-separated list) |
+| `XRAY_PRIVATE_KEY` | `XRAY_PRIVATE_KEY` | `xray_reality_private_key` |
+| `XRAY_PUBLIC_KEY` | `XRAY_PUBLIC_KEY` | `xray_reality_public_key` |
+| `HOST_SSH_PRIVATE_KEY` *(optional)* | `HOST_SSH_PRIVATE_KEY` | SSH key written to `~/.ssh/id_ed25519` on the runner |
+| `HOST_SSH_PUBLIC_KEY` *(optional)* | `HOST_SSH_PUBLIC_KEY` | Saved to `~/.ssh/id_ed25519.pub` when provided |
+
+You can also define a non-secret repository or environment variable named `XRAY_DECOY_SNI` to force a specific fallback SNI. When it is absent or empty, the playbook randomly selects a decoy from `xray_sni_candidates`.
+
+The workflow reads host connection details from the following GitHub environment variables when they are present, allowing you to manage server metadata without modifying the committed inventory:
+
+| Environment variable | Purpose | Default |
+| -------------------- | ------- | ------- |
+| `REMOTE_SERVER_IP_ADDRESS` | Primary connection address for the target host | *(required)* |
+| `REMOTE_SERVER_USER` | SSH user used by Ansible | *(required)* |
+| `REMOTE_SERVER_PORT` | SSH port for the host | `22` |
+
+Manual runs require the operator to pick the GitHub environment from the workflow input before any secrets are loaded; a validation job confirms the environment exists via the GitHub API. You can optionally provide an Ansible limit pattern to target a subset of hosts during the same run.
+
+Successful workflow runs now surface client connection guidance directly in the logs. The final step prints VLESS URIs for Shadowrocket and Clash Meta, a Clash Verge YAML snippet, and ANSI QR codes so you can onboard devices without logging into the target host. Provide the intended domain via `XRAY_SNI` (or define `xray_domain` on the host in `inventory.yml`) to avoid falling back to the placeholder host.

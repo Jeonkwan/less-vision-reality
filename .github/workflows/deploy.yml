@@ -1,0 +1,362 @@
+name: Deploy Xray Stack
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: >-
+          GitHub environment that contains the deployment secrets.
+        required: true
+        type: environment
+      limit:
+        description: >-
+          Optional Ansible limit pattern (host or group) to scope the deployment.
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'unspecified' }}
+  cancel-in-progress: false
+
+jobs:
+  validate-environment:
+    name: Validate deployment environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.ensure.outputs.environment }}
+    steps:
+      - name: Ensure environment exists
+        id: ensure
+        env:
+          REQUESTED_ENVIRONMENT: ${{ github.event.inputs.environment }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${REQUESTED_ENVIRONMENT:-}" ]; then
+            echo "::error::No environment provided. Choose an environment before running the workflow."
+            exit 1
+          fi
+
+          api_url="https://api.github.com/repos/${REPOSITORY}/environments/${REQUESTED_ENVIRONMENT}"
+          status=$(curl -sS \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -o "$RUNNER_TEMP/environment.json" \
+            -w '%{http_code}' \
+            "$api_url")
+
+          if [ "$status" -ne 200 ]; then
+            if [ -f "$RUNNER_TEMP/environment.json" ]; then
+              echo "::debug::$(cat "$RUNNER_TEMP/environment.json")"
+            fi
+            echo "::error::Environment '${REQUESTED_ENVIRONMENT}' was not found in repository '${REPOSITORY}'."
+            exit 1
+          fi
+
+          echo "environment=${REQUESTED_ENVIRONMENT}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Run Ansible deployment
+    runs-on: ubuntu-latest
+    needs: validate-environment
+    environment: ${{ needs.validate-environment.outputs.environment }}
+    env:
+      ANSIBLE_HOST_KEY_CHECKING: "false"
+      XRAY_UUID: ${{ secrets.XRAY_UUID }}
+      XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
+      XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
+      XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+      XRAY_SNI: ${{ secrets.XRAY_SNI != '' && secrets.XRAY_SNI || vars.XRAY_DECOY_SNI != '' && vars.XRAY_DECOY_SNI || '' }}
+      HOST_SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+      HOST_SSH_PUBLIC_KEY: ${{ secrets.HOST_SSH_PUBLIC_KEY }}
+      REMOTE_SERVER_IP_ADDRESS: ${{ vars.REMOTE_SERVER_IP_ADDRESS }}
+      REMOTE_SERVER_USER: ${{ vars.REMOTE_SERVER_USER }}
+      REMOTE_SERVER_PORT: ${{ vars.REMOTE_SERVER_PORT }}
+      ANSIBLE_INVENTORY_PATH: ansible/inventory.yml
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible-core~=2.16
+
+      - name: Mask sensitive variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::add-mask::${XRAY_UUID}"
+          echo "::add-mask::${XRAY_SHORT_IDS}"
+          echo "::add-mask::${XRAY_PRIVATE_KEY}"
+          echo "::add-mask::${XRAY_PUBLIC_KEY}"
+          echo "::add-mask::${HOST_SSH_PRIVATE_KEY}"
+          if [ -n "${HOST_SSH_PUBLIC_KEY:-}" ]; then
+            echo "::add-mask::${HOST_SSH_PUBLIC_KEY}"
+          fi
+
+      - name: Configure SSH key
+        if: env.HOST_SSH_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "${HOST_SSH_PRIVATE_KEY}" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          if [ -n "${HOST_SSH_PUBLIC_KEY:-}" ]; then
+            printf '%s\n' "${HOST_SSH_PUBLIC_KEY}" > "$HOME/.ssh/id_ed25519.pub"
+            chmod 644 "$HOME/.ssh/id_ed25519.pub"
+          fi
+          cat <<'CONFIG' > "$HOME/.ssh/config"
+          Host *
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+          CONFIG
+
+      - name: Render inventory from environment variables
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          HOST_IP="${REMOTE_SERVER_IP_ADDRESS:-}"
+          HOST_USER="${REMOTE_SERVER_USER:-}"
+          HOST_PORT="${REMOTE_SERVER_PORT:-}"
+
+          if [ -n "$HOST_PORT" ]; then
+            PORT_VALUE="$HOST_PORT"
+          else
+            PORT_VALUE="22"
+          fi
+
+          if [ -n "$HOST_IP" ] && [ -n "$HOST_USER" ]; then
+            INVENTORY_PATH="ansible/inventory.runtime.yml"
+            cat <<EOF > "$INVENTORY_PATH"
+all:
+  children:
+    xray_servers:
+      hosts:
+        remote-xray-host:
+          ansible_host: $HOST_IP
+          ansible_user: $HOST_USER
+          ansible_port: $PORT_VALUE
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+EOF
+            echo "Using runtime inventory populated from REMOTE_SERVER_IP_ADDRESS and REMOTE_SERVER_USER."
+            {
+              echo "ANSIBLE_INVENTORY_PATH=$INVENTORY_PATH"
+            } >> "$GITHUB_ENV"
+          else
+            echo "REMOTE_SERVER_IP_ADDRESS or REMOTE_SERVER_USER not set; falling back to repository inventory." >&2
+          fi
+
+      - name: Display Ansible version
+        run: ansible --version
+
+      - name: Run Ansible playbook
+        env:
+          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIMIT_ARGS=()
+          if [ -n "$LIMIT" ]; then
+            LIMIT_ARGS+=("--limit" "$LIMIT")
+          fi
+          ansible-playbook -i "$ANSIBLE_INVENTORY_PATH" ansible/site.yml "${LIMIT_ARGS[@]}"
+
+      - name: Display client connection details
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DOMAIN="${XRAY_SNI:-}"
+          if [ -z "$DOMAIN" ]; then
+            DOMAIN=$(python - <<'PY'
+import yaml
+from pathlib import Path
+
+inv_path = Path("ansible/inventory.yml")
+domain = ""
+if inv_path.exists():
+    data = yaml.safe_load(inv_path.read_text()) or {}
+    hosts = (
+        data.get("all", {})
+        .get("children", {})
+        .get("xray_servers", {})
+        .get("hosts", {})
+    )
+    if isinstance(hosts, dict) and hosts:
+        first_host = next(iter(hosts.values()))
+        if isinstance(first_host, dict):
+            domain = first_host.get("xray_domain") or first_host.get("ansible_host") or ""
+print(domain)
+PY
+)
+          fi
+
+          if [ -z "$DOMAIN" ]; then
+            echo "::warning::No XRAY_SNI secret or inventory override detected; using placeholder example.com."
+            DOMAIN="example.com"
+          fi
+
+          UUID="${XRAY_UUID:-}"
+          if [ -z "$UUID" ]; then
+            echo "::error::XRAY_UUID secret is required to render client connection details."
+            exit 1
+          fi
+
+          SHORT_ID=$(python - "${XRAY_SHORT_IDS:-}" <<'PY'
+import sys
+
+shorts = [s.strip() for s in sys.argv[1].split(",") if s.strip()]
+print(shorts[0] if shorts else "")
+PY
+)
+
+          if [ -n "$SHORT_ID" ]; then
+            SID_PARAM="&sid=$(python - "$SHORT_ID" <<'PY'
+import sys, urllib.parse
+
+print(urllib.parse.quote(sys.argv[1]))
+PY
+)"
+          else
+            SID_PARAM=""
+            echo "::warning::No short IDs detected; skipping sid parameter in generated URIs."
+          fi
+
+          PUBLIC_KEY="${XRAY_PUBLIC_KEY:-}"
+          if [ -n "$PUBLIC_KEY" ]; then
+            PBK_PARAM="&pbk=$(python - "$PUBLIC_KEY" <<'PY'
+import sys, urllib.parse
+
+print(urllib.parse.quote(sys.argv[1]))
+PY
+)"
+          else
+            PBK_PARAM=""
+            echo "::warning::XRAY_PUBLIC_KEY secret is empty; pbk parameter will be omitted."
+          fi
+
+          PORT=$(python - <<'PY'
+import yaml
+from pathlib import Path
+
+vars_path = Path("ansible/group_vars/all.yml")
+port = ""
+if vars_path.exists():
+    data = yaml.safe_load(vars_path.read_text()) or {}
+    host_port = data.get("xray_host_port")
+    if host_port is not None:
+        port = str(host_port)
+print(port)
+PY
+)
+          PORT=${PORT:-443}
+
+          FLOW="xtls-rprx-vision"
+          ALPN_ENCODED="h2%2Chttp%2F1.1"
+          CLIENT_NAME="Less Vision Reality (${DOMAIN})"
+          NAME_ENCODED=$(python - "$CLIENT_NAME" <<'PY'
+import sys, urllib.parse
+
+print(urllib.parse.quote(sys.argv[1]))
+PY
+)
+
+          SHADOWROCKET_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
+          CLASH_META_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}&fp=chrome${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
+
+          export CLIENT_NAME DOMAIN PORT UUID FLOW PUBLIC_KEY SHORT_ID
+
+          CLASH_VERGE_BLOCK=$(python - <<'PY'
+import os
+
+client_name = os.environ["CLIENT_NAME"]
+domain = os.environ["DOMAIN"]
+port = os.environ["PORT"]
+uuid = os.environ["UUID"]
+flow = os.environ["FLOW"]
+public_key = os.environ.get("PUBLIC_KEY", "")
+short_id = os.environ.get("SHORT_ID", "")
+
+lines = [
+    f"- name: {client_name}",
+    "  type: vless",
+    f"  server: {domain}",
+    f"  port: {port}",
+    f"  uuid: {uuid}",
+    "  cipher: none",
+    "  tls: true",
+    "  network: tcp",
+    f"  flow: {flow}",
+    "  udp: true",
+    f"  servername: {domain}",
+    "  alpn:",
+    "    - h2",
+    "    - http/1.1",
+]
+
+if public_key or short_id:
+    lines.append("  reality-opts:")
+    if public_key:
+        lines.append(f"    public-key: {public_key}")
+    if short_id:
+        lines.append(f"    short-id: {short_id}")
+
+lines.append("  client-fingerprint: chrome")
+
+print("\n".join(lines))
+PY
+)
+
+          if ! command -v qrencode >/dev/null 2>&1; then
+            echo "Installing qrencode for QR code output..."
+            sudo apt-get update
+            sudo apt-get install -y qrencode
+          fi
+
+          print_qr_section() {
+            local label="$1"
+            local uri="$2"
+
+            printf '\n%s\n' "$label"
+            printf '%s\n\n' "$(printf '%*s' "${#label}" '' | tr ' ' '-')"
+            printf '%s\n\n' "$uri"
+
+            if command -v qrencode >/dev/null 2>&1; then
+              qrencode -t ansiutf8 <<< "$uri"
+              printf '\n'
+            else
+              echo "::warning::qrencode is not available; skipping QR code generation for $label."
+            fi
+          }
+
+          printf '%s\n' \
+            "============================================================" \
+            "Client Configuration Summary" \
+            "============================================================" \
+            "" \
+            "Shadowrocket (iOS)" \
+            "------------------" \
+            "${SHADOWROCKET_URI}" \
+            "" \
+            "Clash Meta (Android)" \
+            "--------------------" \
+            "${CLASH_META_URI}" \
+            "" \
+            "Clash Verge (Desktop)" \
+            "---------------------" \
+            "${CLASH_VERGE_BLOCK}"
+
+          print_qr_section "Shadowrocket (iOS) QR" "$SHADOWROCKET_URI"
+          print_qr_section "Clash Meta (Android) QR" "$CLASH_META_URI"

@@ -27,6 +27,33 @@
       loop: "{{ xray_required_vars }}"
 
   tasks:
+    - name: Detect existing Xray container
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - "--all"
+          - "--filter"
+          - "name=^/{{ xray_service_name }}$"
+          - "--format"
+          - "{{'{{.ID}}'}}"
+      register: xray_existing_container
+      changed_when: false
+      failed_when: false
+
+    - name: Remove existing Xray container before deployment
+      ansible.builtin.command:
+        argv:
+          - docker
+          - rm
+          - "--force"
+          - "{{ xray_service_name }}"
+      when: >-
+        xray_existing_container.rc == 0
+        and (xray_existing_container.stdout | default('', true) | trim | length > 0)
+      register: xray_removed_container
+      changed_when: xray_removed_container.rc == 0
+
     - name: Determine effective Reality SNI
       ansible.builtin.set_fact:
         xray_effective_sni: "{{ (xray_sni | default('', true) | trim) or (xray_sni_candidates | random) }}"
@@ -67,6 +94,72 @@
 
     - name: Apply configuration immediately when changes occur
       ansible.builtin.meta: flush_handlers
+
+    - name: Wait for Xray container to stabilize
+      ansible.builtin.pause:
+        seconds: 30
+
+    - name: Inspect Xray container state
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - "--format={{'{{json .State}}'}}"
+          - "{{ xray_service_name }}"
+      register: xray_container_state
+      changed_when: false
+      failed_when: false
+
+    - name: Derive Xray container details from inspect output
+      ansible.builtin.set_fact:
+        xray_container_details: >-
+          {{
+            xray_container_state.stdout | from_json
+            if xray_container_state.rc == 0 and (xray_container_state.stdout | default('') | trim | length > 0)
+            else {}
+          }}
+
+    - name: Derive Xray container status and health
+      ansible.builtin.set_fact:
+        xray_container_status: >-
+          {{
+            xray_container_details.Status | default('unknown')
+            if xray_container_details is mapping
+            else 'unknown'
+          }}
+        xray_container_health: >-
+          {{
+            xray_container_details.get('Health', {}).get('Status', 'unknown')
+            if xray_container_details is mapping
+            else 'unknown'
+          }}
+
+    - name: Capture recent Xray container logs on failure
+      ansible.builtin.command:
+        argv:
+          - docker
+          - logs
+          - "--tail"
+          - "100"
+          - "{{ xray_service_name }}"
+      register: xray_container_logs
+      changed_when: false
+      failed_when: false
+      when: xray_container_state.rc != 0 or xray_container_status != 'running'
+
+    - name: Ensure Xray container is running
+      ansible.builtin.assert:
+        that:
+          - xray_container_state.rc == 0
+          - xray_container_status == 'running'
+        fail_msg: >-
+          Xray container failed to reach the running state within 30 seconds.
+          Inspect returned rc={{ xray_container_state.rc }}, status={{ xray_container_status }},
+          health={{ xray_container_health }}, stderr="{{ xray_container_state.stderr | default('') | trim }}".
+          Recent logs (last 100 lines):
+          {{ (xray_container_logs.stdout | default('', true) | trim) or '[no logs captured]' }}
+        success_msg: >-
+          Xray container is running (status={{ xray_container_status }}, health={{ xray_container_health }}).
 
     - name: Stop Xray services
       ansible.builtin.command:
