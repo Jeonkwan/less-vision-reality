@@ -6,24 +6,26 @@ runs:
   steps:
     - name: Generate UUID
       id: uuid
-      uses: docker://cgr.dev/chainguard/util-linux
+      uses: docker://docker.io/library/alpine:3.19
       with:
         entrypoint: /bin/sh
         args: |
           -c '
             set -eu
+            apk add --no-cache util-linux >/dev/null 2>&1
             UUID=$(uuidgen | tr -d "\r")
             printf "value=%s\n" "$UUID" >>"$GITHUB_OUTPUT"
           '
 
     - name: Generate short IDs
       id: short_ids
-      uses: docker://cgr.dev/chainguard/openssl
+      uses: docker://docker.io/library/alpine:3.19
       with:
         entrypoint: /bin/sh
         args: |
           -c '
             set -eu
+            apk add --no-cache openssl >/dev/null 2>&1
             IDS=""
             for _ in 1 2 3; do
               ID=$(openssl rand -hex 8 | tr -d "\r\n")
