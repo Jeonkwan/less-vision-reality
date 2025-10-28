@@ -149,6 +149,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           LIMIT_ARGS=()
           if [ -n "$LIMIT" ]; then
             LIMIT_ARGS+=("--limit" "$LIMIT")
@@ -160,15 +161,28 @@ jobs:
           HOST_PORT="${REMOTE_SERVER_PORT:-}"
 
           if [ -n "$HOST_IP" ] && [ -n "$HOST_USER" ]; then
-            INVENTORY_ARGS+=("--inventory" "${HOST_IP}," "--user" "$HOST_USER")
-            if [ -n "$HOST_PORT" ]; then
-              INVENTORY_ARGS+=("--ssh-extra-args" "-p $HOST_PORT")
-            fi
+            INLINE_INVENTORY="$RUNNER_TEMP/inline-xray-inventory.ini"
+            {
+              echo "[xray_servers]"
+              HOST_LINE="remote ansible_host=${HOST_IP} ansible_user=${HOST_USER}"
+              if [ -n "$HOST_PORT" ]; then
+                HOST_LINE="$HOST_LINE ansible_port=${HOST_PORT}"
+              fi
+              echo "$HOST_LINE"
+            } > "$INLINE_INVENTORY"
+            INVENTORY_ARGS+=("--inventory" "$INLINE_INVENTORY")
           else
             INVENTORY_ARGS+=("--inventory" "$ANSIBLE_INVENTORY_PATH")
           fi
 
-          ansible-playbook "${INVENTORY_ARGS[@]}" ansible/site.yml "${LIMIT_ARGS[@]}"
+          CMD=(ansible-playbook)
+          CMD+=("${INVENTORY_ARGS[@]}")
+          if [ "${#LIMIT_ARGS[@]}" -gt 0 ]; then
+            CMD+=("${LIMIT_ARGS[@]}")
+          fi
+          CMD+=(ansible/site.yml)
+
+          "${CMD[@]}"
 
       - name: Display client connection details
         if: success()
