@@ -1,7 +1,20 @@
-- name: Ensure docker compose is available
-  ansible.builtin.command:
-    cmd: docker compose version
-  changed_when: false
+- name: Verify Docker Compose availability
+  block:
+    - name: Ensure docker compose is available
+      ansible.builtin.command:
+        cmd: docker compose version
+      changed_when: false
+  rescue:
+    - name: Install Docker prerequisites
+      ansible.builtin.import_role:
+        name: docker_prereqs
+      vars:
+        docker_prereqs_user: "{{ xray_common_docker_user }}"
+
+    - name: Ensure docker compose is available
+      ansible.builtin.command:
+        cmd: docker compose version
+      changed_when: false
 
 - name: Validate required Xray variables
   ansible.builtin.assert:

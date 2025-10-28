@@ -1,0 +1,41 @@
+---
+- name: Ensure Docker apt key is installed
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Determine Ubuntu codename for Docker repository
+  ansible.builtin.command: lsb_release -sc
+  register: docker_prereqs_codename
+  changed_when: false
+
+- name: Ensure Docker apt repository is configured
+  ansible.builtin.apt_repository:
+    repo: "deb https://download.docker.com/linux/ubuntu {{ docker_prereqs_codename.stdout }} stable"
+    state: present
+    filename: docker
+
+- name: Install Docker engine and Compose dependencies
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Ensure Docker group contains deployment user
+  ansible.builtin.user:
+    name: "{{ docker_prereqs_user }}"
+    groups:
+      - docker
+    append: true
+  when: docker_prereqs_user | length > 0
+
+- name: Ensure Docker service is enabled and running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
