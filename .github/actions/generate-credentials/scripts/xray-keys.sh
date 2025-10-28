@@ -1,12 +1,18 @@
 #!/bin/sh
 set -eu
 
-if ! command -v xray >/dev/null 2>&1; then
-  echo "xray binary not found in PATH" >&2
+IMAGE="${XRAY_IMAGE:-ghcr.io/xtls/xray-core:25.10.15}"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker binary not found in PATH" >&2
   exit 1
 fi
 
-XRAY_KEYS=$(xray x25519 2>&1)
+if ! XRAY_KEYS=$(docker run --rm "$IMAGE" x25519 2>&1); then
+  status=$?
+  echo "failed to execute xray container (exit $status)" >&2
+  exit "$status"
+fi
 
 PRIVATE_KEY=""
 PUBLIC_KEY=""
@@ -41,7 +47,7 @@ while IFS= read -r line; do
       fi
       ;;
   esac
-done <<'OUT'
+done <<OUT
 $XRAY_KEYS
 OUT
 

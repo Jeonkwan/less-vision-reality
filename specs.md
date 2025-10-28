@@ -51,6 +51,6 @@
 
 ## Credential Generation Workflow
 - Triggered manually via the **Generate Xray Credentials (manual)** workflow or automatically for pull requests via **Generate Xray Credentials (PR check)**.
-- Uses dedicated utility containers to isolate each step: Alpine-based runs install `util-linux` for `uuidgen`, separate Alpine runs install `openssl` to generate short IDs, and the shell-capable `docker.io/teddysun/xray:latest` image produces the Reality key pairs (mapping the CLI's `Password` field to the public key for newer releases).
+- Uses dedicated utility containers to isolate each step: Alpine-based runs install `util-linux` for `uuidgen`, separate Alpine runs install `openssl` to generate short IDs, and the official `ghcr.io/xtls/xray-core:25.10.15` image provides the `xray x25519` CLI. Because the image is distroless, the workflow invokes it via `docker run` on the host and normalizes either `Public key` or `Password` output into the published Reality public key.
 - Emits values only to the job log and step summary so operators can copy/paste secrets without persisting artifacts.
 - Operators must securely store the emitted UUID, short IDs, and keys before running Ansible.
