@@ -28,7 +28,7 @@ on:
         default: ""
 
 concurrency:
-  group: deploy-${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || (github.event_name == 'workflow_call' && inputs.environment) || 'unspecified' }}
+  group: deploy-${{ inputs.environment || github.event.inputs.environment || 'unspecified' }}
   cancel-in-progress: false
 
 jobs:
@@ -41,14 +41,20 @@ jobs:
       - name: Ensure environment exists
         id: ensure
         env:
-          REQUESTED_ENVIRONMENT: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || (github.event_name == 'workflow_call' && inputs.environment) || '' }}
+          REQUESTED_ENVIRONMENT: ${{ inputs.environment || '' }}
+          FALLBACK_ENVIRONMENT: ${{ github.event.inputs.environment || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "${REQUESTED_ENVIRONMENT:-}" ]; then
+          REQUESTED_ENVIRONMENT="${REQUESTED_ENVIRONMENT:-}"
+          if [ -z "$REQUESTED_ENVIRONMENT" ]; then
+            REQUESTED_ENVIRONMENT="${FALLBACK_ENVIRONMENT:-}"
+          fi
+
+          if [ -z "$REQUESTED_ENVIRONMENT" ]; then
             echo "::error::No environment provided. Choose an environment before running the workflow."
             exit 1
           fi
@@ -139,7 +145,7 @@ jobs:
 
       - name: Run Ansible playbook
         env:
-          LIMIT: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.limit) || (github.event_name == 'workflow_call' && inputs.limit) || '' }}
+          LIMIT: ${{ inputs.limit || github.event.inputs.limit || '' }}
         shell: bash
         run: |
           set -euo pipefail
