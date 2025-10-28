@@ -91,4 +91,5 @@
   changed_when: true
   failed_when: >-
     xray_cleanup_remove_network_result is defined and
-    (xray_cleanup_remove_network_result.results | selectattr('rc', 'ne', 0) | list | length > 0)
+    xray_cleanup_remove_network_result.rc is defined and
+    xray_cleanup_remove_network_result.rc != 0
