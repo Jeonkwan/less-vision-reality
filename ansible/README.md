@@ -28,4 +28,4 @@ The playbook regenerates configuration and re-applies `docker compose up -d --re
 
 ## Continuous Integration
 
-A GitHub Action (`.github/workflows/pr-check.yml`) runs `ansible-playbook --syntax-check` with representative environment values on every pull request so changes to the playbook or templates are validated automatically.
+A GitHub Action (`.github/workflows/pr-check.yml`) runs `ansible-playbook --syntax-check` with representative environment values on every pull request so changes to the playbook or templates are validated automatically. A companion workflow (`.github/workflows/generate-credentials.yml`) now runs on pull requests as well, exercising the same credential generation routine that operators can trigger manually via the **Generate Xray Credentials** workflow dispatch entry.
