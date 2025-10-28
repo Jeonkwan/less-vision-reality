@@ -13,9 +13,22 @@ on:
           Optional Ansible limit pattern (host or group) to scope the deployment.
         required: false
         default: ""
+  workflow_call:
+    inputs:
+      environment:
+        description: >-
+          GitHub environment that contains the deployment secrets.
+        required: true
+        type: string
+      limit:
+        description: >-
+          Optional Ansible limit pattern (host or group) to scope the deployment.
+        required: false
+        type: string
+        default: ""
 
 concurrency:
-  group: deploy-${{ github.event.inputs.environment || 'unspecified' }}
+  group: deploy-${{ inputs.environment || github.event.inputs.environment || 'unspecified' }}
   cancel-in-progress: false
 
 jobs:
@@ -28,14 +41,20 @@ jobs:
       - name: Ensure environment exists
         id: ensure
         env:
-          REQUESTED_ENVIRONMENT: ${{ github.event.inputs.environment }}
+          REQUESTED_ENVIRONMENT: ${{ inputs.environment || '' }}
+          FALLBACK_ENVIRONMENT: ${{ github.event.inputs.environment || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "${REQUESTED_ENVIRONMENT:-}" ]; then
+          REQUESTED_ENVIRONMENT="${REQUESTED_ENVIRONMENT:-}"
+          if [ -z "$REQUESTED_ENVIRONMENT" ]; then
+            REQUESTED_ENVIRONMENT="${FALLBACK_ENVIRONMENT:-}"
+          fi
+
+          if [ -z "$REQUESTED_ENVIRONMENT" ]; then
             echo "::error::No environment provided. Choose an environment before running the workflow."
             exit 1
           fi
@@ -121,90 +140,61 @@ jobs:
             IdentitiesOnly yes
           CONFIG
 
-      - name: Render inventory from environment variables
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          HOST_IP="${REMOTE_SERVER_IP_ADDRESS:-}"
-          HOST_USER="${REMOTE_SERVER_USER:-}"
-          HOST_PORT="${REMOTE_SERVER_PORT:-}"
-
-          if [ -n "$HOST_PORT" ]; then
-            PORT_VALUE="$HOST_PORT"
-          else
-            PORT_VALUE="22"
-          fi
-
-          if [ -n "$HOST_IP" ] && [ -n "$HOST_USER" ]; then
-            INVENTORY_PATH="ansible/inventory.runtime.yml"
-            cat <<EOF > "$INVENTORY_PATH"
-all:
-  children:
-    xray_servers:
-      hosts:
-        remote-xray-host:
-          ansible_host: $HOST_IP
-          ansible_user: $HOST_USER
-          ansible_port: $PORT_VALUE
-          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
-EOF
-            echo "Using runtime inventory populated from REMOTE_SERVER_IP_ADDRESS and REMOTE_SERVER_USER."
-            {
-              echo "ANSIBLE_INVENTORY_PATH=$INVENTORY_PATH"
-            } >> "$GITHUB_ENV"
-          else
-            echo "REMOTE_SERVER_IP_ADDRESS or REMOTE_SERVER_USER not set; falling back to repository inventory." >&2
-          fi
-
       - name: Display Ansible version
         run: ansible --version
 
       - name: Run Ansible playbook
         env:
-          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || '' }}
+          LIMIT: ${{ inputs.limit || github.event.inputs.limit || '' }}
         shell: bash
         run: |
           set -euo pipefail
+
           LIMIT_ARGS=()
           if [ -n "$LIMIT" ]; then
             LIMIT_ARGS+=("--limit" "$LIMIT")
           fi
-          ansible-playbook -i "$ANSIBLE_INVENTORY_PATH" ansible/site.yml "${LIMIT_ARGS[@]}"
+
+          INVENTORY_ARGS=()
+          HOST_IP="${REMOTE_SERVER_IP_ADDRESS:-}"
+          HOST_USER="${REMOTE_SERVER_USER:-}"
+          HOST_PORT="${REMOTE_SERVER_PORT:-}"
+
+          if [ -n "$HOST_IP" ] && [ -n "$HOST_USER" ]; then
+            INLINE_INVENTORY="$RUNNER_TEMP/inline-xray-inventory.ini"
+            {
+              echo "[xray_servers]"
+              HOST_LINE="remote ansible_host=${HOST_IP} ansible_user=${HOST_USER}"
+              if [ -n "$HOST_PORT" ]; then
+                HOST_LINE="$HOST_LINE ansible_port=${HOST_PORT}"
+              fi
+              echo "$HOST_LINE"
+            } > "$INLINE_INVENTORY"
+            INVENTORY_ARGS+=("--inventory" "$INLINE_INVENTORY")
+          else
+            INVENTORY_ARGS+=("--inventory" "$ANSIBLE_INVENTORY_PATH")
+          fi
+
+          CMD=(ansible-playbook)
+          CMD+=("${INVENTORY_ARGS[@]}")
+          if [ "${#LIMIT_ARGS[@]}" -gt 0 ]; then
+            CMD+=("${LIMIT_ARGS[@]}")
+          fi
+          CMD+=(ansible/site.yml)
+
+          "${CMD[@]}"
 
       - name: Display client connection details
         if: success()
         shell: bash
+        env:
+          XRAY_DOMAIN: ${{ env.XRAY_SNI }}
         run: |
           set -euo pipefail
 
-          DOMAIN="${XRAY_SNI:-}"
+          DOMAIN="${XRAY_DOMAIN:-}"
           if [ -z "$DOMAIN" ]; then
-            DOMAIN=$(python - <<'PY'
-import yaml
-from pathlib import Path
-
-inv_path = Path("ansible/inventory.yml")
-domain = ""
-if inv_path.exists():
-    data = yaml.safe_load(inv_path.read_text()) or {}
-    hosts = (
-        data.get("all", {})
-        .get("children", {})
-        .get("xray_servers", {})
-        .get("hosts", {})
-    )
-    if isinstance(hosts, dict) and hosts:
-        first_host = next(iter(hosts.values()))
-        if isinstance(first_host, dict):
-            domain = first_host.get("xray_domain") or first_host.get("ansible_host") or ""
-print(domain)
-PY
-)
-          fi
-
-          if [ -z "$DOMAIN" ]; then
-            echo "::warning::No XRAY_SNI secret or inventory override detected; using placeholder example.com."
+            echo "::warning::No XRAY_SNI secret detected; using placeholder example.com."
             DOMAIN="example.com"
           fi
 
@@ -214,21 +204,19 @@ PY
             exit 1
           fi
 
-          SHORT_ID=$(python - "${XRAY_SHORT_IDS:-}" <<'PY'
-import sys
+          PORT="${XRAY_PORT:-}"
+          if [ -z "$PORT" ]; then
+            PORT=443
+          fi
 
-shorts = [s.strip() for s in sys.argv[1].split(",") if s.strip()]
-print(shorts[0] if shorts else "")
-PY
-)
+          SHORT_ID=""
+          if [ -n "${XRAY_SHORT_IDS:-}" ]; then
+            IFS=',' read -r first _ <<< "${XRAY_SHORT_IDS}"
+            SHORT_ID="$(printf '%s' "${first}" | xargs || true)"
+          fi
 
           if [ -n "$SHORT_ID" ]; then
-            SID_PARAM="&sid=$(python - "$SHORT_ID" <<'PY'
-import sys, urllib.parse
-
-print(urllib.parse.quote(sys.argv[1]))
-PY
-)"
+            SID_PARAM="&sid=$(python -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$SHORT_ID")"
           else
             SID_PARAM=""
             echo "::warning::No short IDs detected; skipping sid parameter in generated URIs."
@@ -236,88 +224,50 @@ PY
 
           PUBLIC_KEY="${XRAY_PUBLIC_KEY:-}"
           if [ -n "$PUBLIC_KEY" ]; then
-            PBK_PARAM="&pbk=$(python - "$PUBLIC_KEY" <<'PY'
-import sys, urllib.parse
-
-print(urllib.parse.quote(sys.argv[1]))
-PY
-)"
+            PBK_PARAM="&pbk=$(python -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$PUBLIC_KEY")"
           else
             PBK_PARAM=""
             echo "::warning::XRAY_PUBLIC_KEY secret is empty; pbk parameter will be omitted."
           fi
 
-          PORT=$(python - <<'PY'
-import yaml
-from pathlib import Path
-
-vars_path = Path("ansible/group_vars/all.yml")
-port = ""
-if vars_path.exists():
-    data = yaml.safe_load(vars_path.read_text()) or {}
-    host_port = data.get("xray_host_port")
-    if host_port is not None:
-        port = str(host_port)
-print(port)
-PY
-)
-          PORT=${PORT:-443}
-
           FLOW="xtls-rprx-vision"
           ALPN_ENCODED="h2%2Chttp%2F1.1"
           CLIENT_NAME="Less Vision Reality (${DOMAIN})"
-          NAME_ENCODED=$(python - "$CLIENT_NAME" <<'PY'
-import sys, urllib.parse
-
-print(urllib.parse.quote(sys.argv[1]))
-PY
-)
+          export CLIENT_NAME
+          NAME_ENCODED=$(python -c "import os, urllib.parse; print(urllib.parse.quote(os.environ['CLIENT_NAME']))")
 
           SHADOWROCKET_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
           CLASH_META_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}&fp=chrome${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
 
-          export CLIENT_NAME DOMAIN PORT UUID FLOW PUBLIC_KEY SHORT_ID
+          CLASH_VERGE_LINES=()
+          CLASH_VERGE_LINES+=("- name: Less Vision Reality (${DOMAIN})")
+          CLASH_VERGE_LINES+=("  type: vless")
+          CLASH_VERGE_LINES+=("  server: ${DOMAIN}")
+          CLASH_VERGE_LINES+=("  port: ${PORT}")
+          CLASH_VERGE_LINES+=("  uuid: ${UUID}")
+          CLASH_VERGE_LINES+=("  cipher: none")
+          CLASH_VERGE_LINES+=("  tls: true")
+          CLASH_VERGE_LINES+=("  network: tcp")
+          CLASH_VERGE_LINES+=("  flow: ${FLOW}")
+          CLASH_VERGE_LINES+=("  udp: true")
+          CLASH_VERGE_LINES+=("  servername: ${DOMAIN}")
+          CLASH_VERGE_LINES+=("  alpn:")
+          CLASH_VERGE_LINES+=("    - h2")
+          CLASH_VERGE_LINES+=("    - http/1.1")
 
-          CLASH_VERGE_BLOCK=$(python - <<'PY'
-import os
+          if [ -n "$PUBLIC_KEY" ] || [ -n "$SHORT_ID" ]; then
+            CLASH_VERGE_LINES+=("  reality-opts:")
+            if [ -n "$PUBLIC_KEY" ]; then
+              CLASH_VERGE_LINES+=("    public-key: ${PUBLIC_KEY}")
+            fi
+            if [ -n "$SHORT_ID" ]; then
+              CLASH_VERGE_LINES+=("    short-id: ${SHORT_ID}")
+            fi
+          fi
 
-client_name = os.environ["CLIENT_NAME"]
-domain = os.environ["DOMAIN"]
-port = os.environ["PORT"]
-uuid = os.environ["UUID"]
-flow = os.environ["FLOW"]
-public_key = os.environ.get("PUBLIC_KEY", "")
-short_id = os.environ.get("SHORT_ID", "")
+          CLASH_VERGE_LINES+=("  client-fingerprint: chrome")
+          CLASH_VERGE_BLOCK="$(printf '%s\n' "${CLASH_VERGE_LINES[@]}")"
 
-lines = [
-    f"- name: {client_name}",
-    "  type: vless",
-    f"  server: {domain}",
-    f"  port: {port}",
-    f"  uuid: {uuid}",
-    "  cipher: none",
-    "  tls: true",
-    "  network: tcp",
-    f"  flow: {flow}",
-    "  udp: true",
-    f"  servername: {domain}",
-    "  alpn:",
-    "    - h2",
-    "    - http/1.1",
-]
-
-if public_key or short_id:
-    lines.append("  reality-opts:")
-    if public_key:
-        lines.append(f"    public-key: {public_key}")
-    if short_id:
-        lines.append(f"    short-id: {short_id}")
-
-lines.append("  client-fingerprint: chrome")
-
-print("\n".join(lines))
-PY
-)
 
           if ! command -v qrencode >/dev/null 2>&1; then
             echo "Installing qrencode for QR code output..."
@@ -360,3 +310,4 @@ PY
 
           print_qr_section "Shadowrocket (iOS) QR" "$SHADOWROCKET_URI"
           print_qr_section "Clash Meta (Android) QR" "$CLASH_META_URI"
+          print_qr_section "Clash Verge (Desktop) QR" "$CLASH_META_URI"
