@@ -194,8 +194,13 @@ jobs:
 
           DOMAIN="${XRAY_DOMAIN:-}"
           if [ -z "$DOMAIN" ]; then
-            echo "::warning::No XRAY_SNI secret detected; using placeholder example.com."
-            DOMAIN="example.com"
+            if [ -n "${REMOTE_SERVER_IP_ADDRESS:-}" ]; then
+              DOMAIN="${REMOTE_SERVER_IP_ADDRESS}"
+              echo "::notice::No XRAY_SNI secret detected; using remote server IP ${DOMAIN}."
+            else
+              echo "::warning::No XRAY_SNI secret or remote server IP detected; using placeholder example.com."
+              DOMAIN="example.com"
+            fi
           fi
 
           UUID="${XRAY_UUID:-}"
