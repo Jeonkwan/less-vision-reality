@@ -187,16 +187,14 @@ jobs:
       - name: Display client connection details
         if: success()
         shell: bash
+        env:
+          XRAY_DOMAIN: ${{ env.XRAY_SNI }}
         run: |
           set -euo pipefail
 
-          DOMAIN="${XRAY_SNI:-}"
+          DOMAIN="${XRAY_DOMAIN:-}"
           if [ -z "$DOMAIN" ]; then
-            DOMAIN=$(python -c $'import yaml\nfrom pathlib import Path\n\ninv_path = Path("ansible/inventory.yml")\ndomain = ""\nif inv_path.exists():\n    data = yaml.safe_load(inv_path.read_text()) or {}\n    hosts = (\n        data.get("all", {})\n        .get("children", {})\n        .get("xray_servers", {})\n        .get("hosts", {})\n    )\n    if isinstance(hosts, dict):\n        for value in hosts.values():\n            if isinstance(value, dict):\n                domain = value.get("xray_domain") or value.get("ansible_host") or ""\n                if domain:\n                    break\nprint(domain)')
-          fi
-
-          if [ -z "$DOMAIN" ]; then
-            echo "::warning::No XRAY_SNI secret or inventory override detected; using placeholder example.com."
+            echo "::warning::No XRAY_SNI secret detected; using placeholder example.com."
             DOMAIN="example.com"
           fi
 
@@ -206,10 +204,19 @@ jobs:
             exit 1
           fi
 
-          SHORT_ID=$(python -c $'import sys\n\nshorts = [s.strip() for s in sys.argv[1].split(",") if s.strip()]\nprint(shorts[0] if shorts else "")' "${XRAY_SHORT_IDS:-}")
+          PORT="${XRAY_PORT:-}"
+          if [ -z "$PORT" ]; then
+            PORT=443
+          fi
+
+          SHORT_ID=""
+          if [ -n "${XRAY_SHORT_IDS:-}" ]; then
+            IFS=',' read -r first _ <<< "${XRAY_SHORT_IDS}"
+            SHORT_ID="$(printf '%s' "${first}" | xargs || true)"
+          fi
 
           if [ -n "$SHORT_ID" ]; then
-            SID_PARAM="&sid=$(python -c $'import sys, urllib.parse\n\nprint(urllib.parse.quote(sys.argv[1]))' "$SHORT_ID")"
+            SID_PARAM="&sid=$(python -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$SHORT_ID")"
           else
             SID_PARAM=""
             echo "::warning::No short IDs detected; skipping sid parameter in generated URIs."
@@ -217,26 +224,50 @@ jobs:
 
           PUBLIC_KEY="${XRAY_PUBLIC_KEY:-}"
           if [ -n "$PUBLIC_KEY" ]; then
-            PBK_PARAM="&pbk=$(python -c $'import sys, urllib.parse\n\nprint(urllib.parse.quote(sys.argv[1]))' "$PUBLIC_KEY")"
+            PBK_PARAM="&pbk=$(python -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$PUBLIC_KEY")"
           else
             PBK_PARAM=""
             echo "::warning::XRAY_PUBLIC_KEY secret is empty; pbk parameter will be omitted."
           fi
 
-          PORT=$(python -c $'import yaml\nfrom pathlib import Path\n\nvars_path = Path("ansible/group_vars/all.yml")\nport = ""\nif vars_path.exists():\n    data = yaml.safe_load(vars_path.read_text()) or {}\n    host_port = data.get("xray_host_port")\n    if host_port is not None:\n        port = str(host_port)\nprint(port)')
-          PORT=${PORT:-443}
-
           FLOW="xtls-rprx-vision"
           ALPN_ENCODED="h2%2Chttp%2F1.1"
           CLIENT_NAME="Less Vision Reality (${DOMAIN})"
-          NAME_ENCODED=$(python -c $'import sys, urllib.parse\n\nprint(urllib.parse.quote(sys.argv[1]))' "$CLIENT_NAME")
+          export CLIENT_NAME
+          NAME_ENCODED=$(python -c "import os, urllib.parse; print(urllib.parse.quote(os.environ['CLIENT_NAME']))")
 
           SHADOWROCKET_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
           CLASH_META_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}&fp=chrome${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
 
-          export CLIENT_NAME DOMAIN PORT UUID FLOW PUBLIC_KEY SHORT_ID
+          CLASH_VERGE_LINES=()
+          CLASH_VERGE_LINES+=("- name: Less Vision Reality (${DOMAIN})")
+          CLASH_VERGE_LINES+=("  type: vless")
+          CLASH_VERGE_LINES+=("  server: ${DOMAIN}")
+          CLASH_VERGE_LINES+=("  port: ${PORT}")
+          CLASH_VERGE_LINES+=("  uuid: ${UUID}")
+          CLASH_VERGE_LINES+=("  cipher: none")
+          CLASH_VERGE_LINES+=("  tls: true")
+          CLASH_VERGE_LINES+=("  network: tcp")
+          CLASH_VERGE_LINES+=("  flow: ${FLOW}")
+          CLASH_VERGE_LINES+=("  udp: true")
+          CLASH_VERGE_LINES+=("  servername: ${DOMAIN}")
+          CLASH_VERGE_LINES+=("  alpn:")
+          CLASH_VERGE_LINES+=("    - h2")
+          CLASH_VERGE_LINES+=("    - http/1.1")
 
-          CLASH_VERGE_BLOCK=$(python -c $'import os\n\nclient_name = os.environ["CLIENT_NAME"]\ndomain = os.environ["DOMAIN"]\nport = os.environ["PORT"]\nuuid = os.environ["UUID"]\nflow = os.environ["FLOW"]\npublic_key = os.environ.get("PUBLIC_KEY", "")\nshort_id = os.environ.get("SHORT_ID", "")\n\nlines = [\n    f"- name: {client_name}",\n    "  type: vless",\n    f"  server: {domain}",\n    f"  port: {port}",\n    f"  uuid: {uuid}",\n    "  cipher: none",\n    "  tls: true",\n    "  network: tcp",\n    f"  flow: {flow}",\n    "  udp: true",\n    f"  servername: {domain}",\n    "  alpn:",\n    "    - h2",\n    "    - http/1.1",\n]\n\nif public_key or short_id:\n    lines.append("  reality-opts:")\n    if public_key:\n        lines.append(f"    public-key: {public_key}")\n    if short_id:\n        lines.append(f"    short-id: {short_id}")\n\nlines.append("  client-fingerprint: chrome")\n\nprint("\\n".join(lines))')
+          if [ -n "$PUBLIC_KEY" ] || [ -n "$SHORT_ID" ]; then
+            CLASH_VERGE_LINES+=("  reality-opts:")
+            if [ -n "$PUBLIC_KEY" ]; then
+              CLASH_VERGE_LINES+=("    public-key: ${PUBLIC_KEY}")
+            fi
+            if [ -n "$SHORT_ID" ]; then
+              CLASH_VERGE_LINES+=("    short-id: ${SHORT_ID}")
+            fi
+          fi
+
+          CLASH_VERGE_LINES+=("  client-fingerprint: chrome")
+          CLASH_VERGE_BLOCK="$(printf '%s\n' "${CLASH_VERGE_LINES[@]}")"
+
 
           if ! command -v qrencode >/dev/null 2>&1; then
             echo "Installing qrencode for QR code output..."
@@ -279,3 +310,4 @@ jobs:
 
           print_qr_section "Shadowrocket (iOS) QR" "$SHADOWROCKET_URI"
           print_qr_section "Clash Meta (Android) QR" "$CLASH_META_URI"
+          print_qr_section "Clash Verge (Desktop) QR" "$CLASH_META_URI"

@@ -1,0 +1,94 @@
+---
+- name: Discover conflicting Xray containers
+  ansible.builtin.shell: |
+    set -o pipefail
+    docker ps -a --format '{{ "{{" }}.ID{{ "}}" }} {{ "{{" }}.Image{{ "}}" }} {{ "{{" }}.Names{{ "}}" }} {{ "{{" }}.Ports{{ "}}" }}' \
+      | while read -r id image name ports; do
+          if [ -z "${id}" ]; then
+            continue
+          fi
+          lower_meta="$(printf '%s %s' "${image}" "${name}" | tr '[:upper:]' '[:lower:]')"
+          lower_ports="$(printf '%s' "${ports}" | tr '[:upper:]' '[:lower:]')"
+          if echo "${lower_meta}" | grep -q 'xray'; then
+            echo "${id}"
+            continue
+          fi
+          if printf '%s\n' "${lower_ports}" | grep -q '443'; then
+            echo "${id}"
+          fi
+        done \
+      | sort -u
+  args:
+    executable: /bin/bash
+  register: xray_cleanup_conflicting_containers
+  changed_when: false
+  failed_when: false
+
+- name: Collect conflicting Xray container IDs
+  ansible.builtin.set_fact:
+    xray_cleanup_conflicting_container_ids: "{{ xray_cleanup_conflicting_containers.stdout_lines | default([]) | map('trim') | reject('equalto', '') | list }}"
+  when: xray_cleanup_conflicting_containers is defined
+
+- name: Stop conflicting Xray containers
+  ansible.builtin.command:
+    argv:
+      - docker
+      - stop
+      - "{{ item }}"
+  loop: "{{ xray_cleanup_conflicting_container_ids | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - xray_cleanup_conflicting_container_ids is defined
+    - xray_cleanup_conflicting_container_ids | length > 0
+  changed_when: true
+
+- name: Remove conflicting Xray containers
+  ansible.builtin.command:
+    argv:
+      - docker
+      - rm
+      - "{{ item }}"
+  loop: "{{ xray_cleanup_conflicting_container_ids | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - xray_cleanup_conflicting_container_ids is defined
+    - xray_cleanup_conflicting_container_ids | length > 0
+  changed_when: true
+
+- name: Discover conflicting Xray Docker networks
+  ansible.builtin.shell: |
+    set -o pipefail
+    docker network ls --format '{{ "{{" }}.Name{{ "}}" }}' \
+      | awk 'BEGIN { IGNORECASE = 1 } /xray/ { print $0 }' \
+      | sort -u
+  args:
+    executable: /bin/bash
+  register: xray_cleanup_conflicting_networks
+  changed_when: false
+  failed_when: false
+
+- name: Collect conflicting Xray Docker network names
+  ansible.builtin.set_fact:
+    xray_cleanup_conflicting_network_names: "{{ xray_cleanup_conflicting_networks.stdout_lines | default([]) | map('trim') | reject('equalto', '') | list }}"
+  when: xray_cleanup_conflicting_networks is defined
+
+- name: Remove conflicting Xray Docker networks
+  ansible.builtin.command:
+    argv:
+      - docker
+      - network
+      - rm
+      - "{{ item }}"
+  loop: "{{ xray_cleanup_conflicting_network_names | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  register: xray_cleanup_remove_network_result
+  when:
+    - xray_cleanup_conflicting_network_names is defined
+    - xray_cleanup_conflicting_network_names | length > 0
+  changed_when: true
+  failed_when: >-
+    xray_cleanup_remove_network_result is defined and
+    (xray_cleanup_remove_network_result.results | selectattr('rc', 'ne', 0) | list | length > 0)

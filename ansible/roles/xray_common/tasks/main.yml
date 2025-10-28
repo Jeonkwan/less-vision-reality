@@ -1,0 +1,12 @@
+- name: Ensure docker compose is available
+  ansible.builtin.command:
+    cmd: docker compose version
+  changed_when: false
+
+- name: Validate required Xray variables
+  ansible.builtin.assert:
+    that:
+      - (hostvars[inventory_hostname][item] | default('', true)) | length > 0
+    fail_msg: "Variable '{{ item }}' must be provided for Xray deployment."
+    success_msg: "Variable '{{ item }}' is defined."
+  loop: "{{ xray_common_required_vars }}"

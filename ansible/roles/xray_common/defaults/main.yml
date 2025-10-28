@@ -1,0 +1,6 @@
+---
+xray_common_required_vars:
+  - xray_uuid
+  - xray_short_ids
+  - xray_reality_private_key
+  - xray_reality_public_key
