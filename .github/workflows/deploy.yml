@@ -248,7 +248,7 @@ jobs:
           export CLIENT_NAME
           NAME_ENCODED=$(python -c "import os, urllib.parse; print(urllib.parse.quote(os.environ['CLIENT_NAME']))")
 
-          SHADOWROCKET_URI="vless://${UUID}@${CONNECTION_HOST}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${TLS_SNI}&alpn=${ALPN_ENCODED}${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
+          SHADOWROCKET_URI="vless://${UUID}@${CONNECTION_HOST}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${TLS_SNI}&alpn=${ALPN_ENCODED}&tfo=1${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
           CLASH_META_URI="vless://${UUID}@${CONNECTION_HOST}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${TLS_SNI}&alpn=${ALPN_ENCODED}&fp=chrome${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
 
           CLASH_VERGE_LINES=()
@@ -257,7 +257,6 @@ jobs:
           CLASH_VERGE_LINES+=("  server: ${CONNECTION_HOST}")
           CLASH_VERGE_LINES+=("  port: ${PORT}")
           CLASH_VERGE_LINES+=("  uuid: ${UUID}")
-          CLASH_VERGE_LINES+=("  cipher: none")
           CLASH_VERGE_LINES+=("  tls: true")
           CLASH_VERGE_LINES+=("  network: tcp")
           CLASH_VERGE_LINES+=("  flow: ${FLOW}")
