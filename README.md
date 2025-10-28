@@ -8,15 +8,15 @@ This repository contains Ansible playbooks and supporting GitHub Actions workflo
 - Credentials workflow that can be triggered manually or automatically during pull requests to produce fresh UUID, short IDs, and Xray Reality key pairs for operators.
 
 ## Generating Reality Credentials
-Use the **Generate Xray Credentials** workflow whenever you need disposable identifiers for a new deployment:
+Use the **Generate Xray Credentials (manual)** workflow whenever you need disposable identifiers for a new deployment:
 
-1. Navigate to **Actions → Generate Xray Credentials** in GitHub.
-2. Press **Run workflow**, provide a short description in the **Run label** input (this text appears in the job title), and confirm.
+1. Navigate to **Actions → Generate Xray Credentials (manual)** in GitHub.
+2. Press **Run workflow**, provide a short description in the **Run label** input (this text appears in the workflow run title and job name), and confirm.
 3. Open the workflow run and expand the single job.
 4. Copy the values from the step summary or grouped log output.
 5. Store the UUID, short IDs, and key pair securely (for example in your inventory variables or secrets manager).
 
-The workflow uses the official `ghcr.io/xtls/xray-core` container image to execute `xray` CLI helpers. The same core steps execute automatically for pull requests—those runs are labelled **Generate credentials (PR check run …)** so they stand out from manual executions. No artifacts are saved; outputs only appear in the job log and step summary for easy copy/paste.
+The workflow uses the official `ghcr.io/xtls/xray-core` container image to execute `xray` CLI helpers. The same core steps execute automatically for pull requests via the **Generate Xray Credentials (PR check)** workflow so credential generation errors are caught during review. No artifacts are saved; outputs only appear in the job log and step summary for easy copy/paste.
 
 ## Ansible Usage
 1. Review or edit default variables in `ansible/group_vars/all.yml`.

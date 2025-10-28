@@ -1,0 +1,54 @@
+name: Generate Xray Credentials
+inputs: {}
+runs:
+  using: composite
+  steps:
+    - name: Output Reality credentials
+      shell: sh
+      run: |
+        set -eu
+
+        UUID=$(xray uuid | tr -d '\r')
+
+        generate_short_id() {
+          if command -v od >/dev/null 2>&1; then
+            od -vAn -N4 -tx1 /dev/urandom | tr -d ' \n'
+          elif command -v hexdump >/dev/null 2>&1; then
+            hexdump -vn4 -e '1/1 "%02x"' /dev/urandom
+          else
+            tr -dc 'a-f0-9' < /dev/urandom | head -c 8
+          fi
+        }
+
+        set --
+        for _ in 1 2 3; do
+          set -- "$@" "$(generate_short_id)"
+        done
+
+        XRAY_KEYS=$(xray x25519)
+        PRIVATE_KEY=$(printf '%s\n' "$XRAY_KEYS" | awk -F': ' '/Private key/{print $2}')
+        PUBLIC_KEY=$(printf '%s\n' "$XRAY_KEYS" | awk -F': ' '/Public key/{print $2}')
+
+        echo "::group::Xray Reality Credentials"
+        echo "XRAY_UUID: $UUID"
+        echo "XRAY_SHORT_IDS:"
+        for short_id in "$@"; do
+          echo "  - $short_id"
+        done
+        echo "XRAY_PRIVATE_KEY: $PRIVATE_KEY"
+        echo "XRAY_PUBLIC_KEY: $PUBLIC_KEY"
+        echo "::endgroup::"
+
+        {
+          echo "### Generated Xray Credentials"
+          echo
+          echo "- **UUID:** \`$UUID\`"
+          echo "- **Short IDs:**"
+          for short_id in "$@"; do
+            echo "  - \`$short_id\`"
+          done
+          echo "- **Reality Private Key:** \`$PRIVATE_KEY\`"
+          echo "- **Reality Public Key:** \`$PUBLIC_KEY\`"
+          echo
+          echo "> Copy the values above into your inventory or secret manager."
+        } >> "$GITHUB_STEP_SUMMARY"
