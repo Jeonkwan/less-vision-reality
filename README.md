@@ -23,7 +23,7 @@ The workflow uses the official `ghcr.io/xtls/xray-core` container image to execu
 2. Update `ansible/inventory.yml` with your target hosts and overrides.
 3. Run `ansible-playbook -i ansible/inventory.yml ansible/site.yml` to apply the configuration.
 
-Ensure the UUID, short IDs, and Reality keys you obtained from the credentials workflow are provided through inventory variables, vaulted secrets, or environment overrides before running the playbook.
+Ensure the UUID, short IDs, and Reality keys you obtained from the credentials workflow are provided through inventory variables, vaulted secrets, or environment overrides before running the playbook. If you omit the optional Reality SNI value, the playbook now selects a random decoy from the predefined candidate list.
 
 ## Repository Structure
 - `ansible/` – Playbooks, inventory, variable definitions, and templates for the Xray deployment.

@@ -37,7 +37,7 @@
 - **xray_uuid:** Primary UUID for the Vision/Reality client. Operators override via inventory, vault, `--extra-vars`, or the `XRAY_UUID` environment variable when invoking Ansible.
 - **xray_short_ids:** Short identifiers for Reality. Accepts a YAML list and can be overridden through the `XRAY_SHORT_IDS` environment variable (comma separated) or explicit vars.
 - **xray_reality_private_key / xray_reality_public_key:** Reality key pair expected from secure storage. Example fallbacks are placeholders; operators must supply real values via vault or environment variables (`XRAY_PRIVATE_KEY`, `XRAY_PUBLIC_KEY`).
-- **xray_sni:** Optional decoy SNI, defaulting to `www.bing.com` when empty.
+- **xray_sni:** Optional decoy SNI, defaulting to a random selection from the configured candidate list when empty.
 - **xray_container_image / ports / restart policy:** Infrastructure defaults that can be tuned per inventory to match deployment needs.
 
 ## Operational Flow
