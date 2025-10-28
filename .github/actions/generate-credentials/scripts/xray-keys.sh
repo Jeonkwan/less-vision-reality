@@ -30,7 +30,10 @@ while IFS= read -r line; do
   [ "$key_part" = "$line" ] && continue
 
   # Normalise the key label (remove spaces, lower-case)
-  normalised_key=$(printf "%s" "$key_part" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+  normalised_key=$(printf "%s" "$key_part" |
+    tr -d '\r' |
+    tr '[:upper:]' '[:lower:]' |
+    tr -d '[:space:]')
   # Trim whitespace and carriage returns from the value
   value=$(printf "%s" "$value_part" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
   value=$(printf "%s" "$value" | tr -d '\r')
