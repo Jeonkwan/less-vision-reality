@@ -1,6 +1,14 @@
 # Less Vision Reality Automation
 
-This repository contains Ansible playbooks and supporting GitHub Actions workflows for deploying and operating an Xray Vision/Reality stack with Docker Compose.
+This repository contains Ansible playbooks and supporting GitHub Actions workflows for deploying and operating an Xray Vision/Reality stack with Docker Compose. The automation draws inspiration from [`Jeonkwan/less-vision`](https://github.com/Jeonkwan/less-vision) and [`myelectronix/xtls-reality-docker`](https://github.com/myelectronix/xtls-reality-docker) while introducing templated inventories, idempotent handlers, and CI-driven credential tooling tailored to the requirements captured in [`specs.md`](specs.md).
+
+## Documentation Suite
+
+- [Setup Guide](docs/setup.md) – Infrastructure prerequisites, local environment preparation, and repository relationships.
+- [Operations Guide](docs/operations.md) – Inventory management patterns, Ansible execution flows, GitHub Action usage, and maintenance runbooks.
+- [Secrets Management Guide](docs/secrets-management.md) – Secure handling, rotation, and auditing guidance for all required credentials.
+
+Refer back to [`specs.md`](specs.md) for the authoritative project goals and keep the documentation synchronized with ongoing automation changes.
 
 ## Features
 - Automated Ansible playbook (`ansible/site.yml`) that renders Xray configuration and applies Docker Compose updates.
@@ -9,7 +17,18 @@ This repository contains Ansible playbooks and supporting GitHub Actions workflo
 - Deployment workflow that installs Ansible on a runner, hydrates sensitive variables from repository or environment secrets, and executes the playbook against the configured inventory.
 
 ## Generating Reality Credentials
-Use the **Generate Xray Credentials (manual)** workflow whenever you need disposable identifiers for a new deployment:
+Use the **Generate Xray Credentials (manual)** workflow whenever you need disposable identifiers for a new deployment. When GitH
+ub Actions access is unavailable, run `./scripts/generate_xray_credentials.sh` locally—the wrapper launches throwaway Docker cont
+ainers so Docker is the only dependency:
+
+```bash
+SHORT_ID_COUNT=5 ./scripts/generate_xray_credentials.sh > credentials.env
+```
+
+The script prints the UUID, comma-separated short IDs, and Reality key pair. Copy the secrets into Vault-encrypted inventory fil
+es or environment variables immediately, then securely delete the temporary file.
+
+Trigger the GitHub workflow with:
 
 1. Navigate to **Actions → Generate Xray Credentials (manual)** in GitHub.
 2. Press **Run workflow**, provide a short description in the **Run label** input (this text appears in the workflow run title and job name), and confirm.
