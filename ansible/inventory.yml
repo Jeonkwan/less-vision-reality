@@ -1,0 +1,9 @@
+all:
+  children:
+    xray_servers:
+      hosts:
+        xray-example:
+          ansible_host: REPLACE_ME_WITH_TARGET
+          ansible_user: deploy
+          ansible_port: 22
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
