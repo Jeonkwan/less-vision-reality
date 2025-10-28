@@ -61,7 +61,7 @@ The deployment workflow (`.github/workflows/deploy.yml`) provides a turnkey path
 | `HOST_SSH_PRIVATE_KEY` *(optional)* | `HOST_SSH_PRIVATE_KEY` | SSH key written to `~/.ssh/id_ed25519` on the runner |
 | `HOST_SSH_PUBLIC_KEY` *(optional)* | `HOST_SSH_PUBLIC_KEY` | Saved to `~/.ssh/id_ed25519.pub` when provided |
 
-You can also define a non-secret repository or environment variable named `XRAY_DECOY_SNI` to force a specific fallback SNI. When it is absent or empty, the playbook randomly selects a decoy from `xray_sni_candidates`.
+You can also define a non-secret repository or environment variable named `XRAY_DECOY_SNI` to force a specific fallback SNI. When both `XRAY_SNI` and `XRAY_DECOY_SNI` are absent or empty, the deployment defaults the TLS Server Name Indication to `web.wechat.com`.
 
 The workflow reads host connection details from the following GitHub environment variables when they are present, allowing you to manage server metadata without modifying the committed inventory:
 
@@ -73,4 +73,4 @@ The workflow reads host connection details from the following GitHub environment
 
 Manual runs require the operator to pick the GitHub environment from the workflow input before any secrets are loaded; a validation job confirms the environment exists via the GitHub API. You can optionally provide an Ansible limit pattern to target a subset of hosts during the same run.
 
-Successful workflow runs now surface client connection guidance directly in the logs. The final step prints VLESS URIs for Shadowrocket and Clash Meta, a Clash Verge YAML snippet, and ANSI QR codes so you can onboard devices without logging into the target host. Provide the intended domain via `XRAY_SNI` (or define `xray_domain` on the host in `inventory.yml`) to avoid falling back to the placeholder host.
+Successful workflow runs now surface client connection guidance directly in the logs. The final step prints VLESS URIs for Shadowrocket and Clash Meta, a Clash Verge YAML snippet, and ANSI QR codes so you can onboard devices without logging into the target host. Provide the intended domain via `XRAY_SNI` (or define `xray_domain` on the host in `inventory.yml`) to override the default TLS decoy of `web.wechat.com`; when it is omitted, the workflow still uses your configured remote server IP (when available) as the connection endpoint.
