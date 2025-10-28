@@ -192,15 +192,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          DOMAIN="${XRAY_DOMAIN:-}"
-          if [ -z "$DOMAIN" ]; then
-            if [ -n "${REMOTE_SERVER_IP_ADDRESS:-}" ]; then
-              DOMAIN="${REMOTE_SERVER_IP_ADDRESS}"
-              echo "::notice::No XRAY_SNI secret detected; using remote server IP ${DOMAIN}."
+          TLS_SNI="${XRAY_DOMAIN:-}"
+          if [ -z "$TLS_SNI" ]; then
+            TLS_SNI="web.wechat.com"
+            echo "::notice::No XRAY_SNI secret detected; using default decoy domain ${TLS_SNI} for TLS SNI."
+          fi
+
+          CONNECTION_HOST="${REMOTE_SERVER_IP_ADDRESS:-}"
+          if [ -z "$CONNECTION_HOST" ]; then
+            if [ -n "${XRAY_DOMAIN:-}" ]; then
+              CONNECTION_HOST="${XRAY_DOMAIN}"
             else
-              echo "::warning::No XRAY_SNI secret or remote server IP detected; using placeholder example.com."
-              DOMAIN="example.com"
+              CONNECTION_HOST="$TLS_SNI"
+              echo "::warning::No remote server IP detected; using ${CONNECTION_HOST} as the connection host."
             fi
+          elif [ -z "${XRAY_DOMAIN:-}" ]; then
+            echo "::notice::Using remote server IP ${CONNECTION_HOST} as the connection host."
           fi
 
           UUID="${XRAY_UUID:-}"
@@ -237,17 +244,17 @@ jobs:
 
           FLOW="xtls-rprx-vision"
           ALPN_ENCODED="h2%2Chttp%2F1.1"
-          CLIENT_NAME="Less Vision Reality (${DOMAIN})"
+          CLIENT_NAME="Less Vision Reality (${CONNECTION_HOST})"
           export CLIENT_NAME
           NAME_ENCODED=$(python -c "import os, urllib.parse; print(urllib.parse.quote(os.environ['CLIENT_NAME']))")
 
-          SHADOWROCKET_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
-          CLASH_META_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}&fp=chrome${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
+          SHADOWROCKET_URI="vless://${UUID}@${CONNECTION_HOST}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${TLS_SNI}&alpn=${ALPN_ENCODED}${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
+          CLASH_META_URI="vless://${UUID}@${CONNECTION_HOST}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${TLS_SNI}&alpn=${ALPN_ENCODED}&fp=chrome${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
 
           CLASH_VERGE_LINES=()
-          CLASH_VERGE_LINES+=("- name: Less Vision Reality (${DOMAIN})")
+          CLASH_VERGE_LINES+=("- name: Less Vision Reality (${CONNECTION_HOST})")
           CLASH_VERGE_LINES+=("  type: vless")
-          CLASH_VERGE_LINES+=("  server: ${DOMAIN}")
+          CLASH_VERGE_LINES+=("  server: ${CONNECTION_HOST}")
           CLASH_VERGE_LINES+=("  port: ${PORT}")
           CLASH_VERGE_LINES+=("  uuid: ${UUID}")
           CLASH_VERGE_LINES+=("  cipher: none")
@@ -255,7 +262,7 @@ jobs:
           CLASH_VERGE_LINES+=("  network: tcp")
           CLASH_VERGE_LINES+=("  flow: ${FLOW}")
           CLASH_VERGE_LINES+=("  udp: true")
-          CLASH_VERGE_LINES+=("  servername: ${DOMAIN}")
+          CLASH_VERGE_LINES+=("  servername: ${TLS_SNI}")
           CLASH_VERGE_LINES+=("  alpn:")
           CLASH_VERGE_LINES+=("    - h2")
           CLASH_VERGE_LINES+=("    - http/1.1")

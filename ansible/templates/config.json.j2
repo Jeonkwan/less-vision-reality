@@ -1,3 +1,4 @@
+{%- set xray_effective_sni = (xray_sni | default('', true) | trim) or 'web.wechat.com' -%}
 {
   "log": {
     "loglevel": "warning"
@@ -29,10 +30,10 @@
         "security": "reality",
         "realitySettings": {
           "show": false,
-          "dest": "{{ xray_deploy_effective_sni }}:443",
+          "dest": "{{ xray_effective_sni }}:443",
           "xver": 0,
           "serverNames": [
-            "{{ xray_deploy_effective_sni }}"
+            "{{ xray_effective_sni }}"
           ],
           "privateKey": "{{ xray_reality_private_key }}",
           "publicKey": "{{ xray_reality_public_key }}",

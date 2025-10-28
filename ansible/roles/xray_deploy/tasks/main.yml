@@ -1,8 +1,4 @@
 ---
-- name: Determine effective Reality SNI
-  ansible.builtin.set_fact:
-    xray_deploy_effective_sni: "{{ (xray_sni | default('', true) | trim) or (xray_sni_candidates | random) }}"
-
 - name: Ensure Xray service root exists
   ansible.builtin.file:
     path: "{{ xray_service_root }}"

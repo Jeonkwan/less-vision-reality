@@ -38,14 +38,5 @@ xray_short_ids: >-
 xray_reality_private_key: "{{ lookup('env', 'XRAY_PRIVATE_KEY') | default('REPLACE_WITH_PRIVATE_KEY', true) }}"
 xray_reality_public_key: "{{ lookup('env', 'XRAY_PUBLIC_KEY') | default('REPLACE_WITH_PUBLIC_KEY', true) }}"
 # Optional Server Name Indication value for Reality handshakes.
-# When omitted or empty, a random decoy is chosen from `xray_sni_candidates`.
+# When omitted or empty, the deployment falls back to the default decoy domain `web.wechat.com`.
 xray_sni: "{{ lookup('env', 'XRAY_SNI') | default('', true) }}"
-
-# Pool of default decoy domains to use when SNI is not provided.
-xray_sni_candidates:
-  - www.alipay.com
-  - www.bing.com
-  - web.wechat.com
-  - www.taobao.com
-  - www.baidu.com
-  - www.bing.cn
