@@ -172,27 +172,7 @@ jobs:
 
           DOMAIN="${XRAY_SNI:-}"
           if [ -z "$DOMAIN" ]; then
-            DOMAIN=$(python - <<'PY'
-import yaml
-from pathlib import Path
-
-inv_path = Path("ansible/inventory.yml")
-domain = ""
-if inv_path.exists():
-    data = yaml.safe_load(inv_path.read_text()) or {}
-    hosts = (
-        data.get("all", {})
-        .get("children", {})
-        .get("xray_servers", {})
-        .get("hosts", {})
-    )
-    if isinstance(hosts, dict) and hosts:
-        first_host = next(iter(hosts.values()))
-        if isinstance(first_host, dict):
-            domain = first_host.get("xray_domain") or first_host.get("ansible_host") or ""
-print(domain)
-PY
-)
+            DOMAIN=$(python -c $'import yaml\nfrom pathlib import Path\n\ninv_path = Path("ansible/inventory.yml")\ndomain = ""\nif inv_path.exists():\n    data = yaml.safe_load(inv_path.read_text()) or {}\n    hosts = (\n        data.get("all", {})\n        .get("children", {})\n        .get("xray_servers", {})\n        .get("hosts", {})\n    )\n    if isinstance(hosts, dict):\n        for value in hosts.values():\n            if isinstance(value, dict):\n                domain = value.get("xray_domain") or value.get("ansible_host") or ""\n                if domain:\n                    break\nprint(domain)')
           fi
 
           if [ -z "$DOMAIN" ]; then
@@ -206,21 +186,10 @@ PY
             exit 1
           fi
 
-          SHORT_ID=$(python - "${XRAY_SHORT_IDS:-}" <<'PY'
-import sys
-
-shorts = [s.strip() for s in sys.argv[1].split(",") if s.strip()]
-print(shorts[0] if shorts else "")
-PY
-)
+          SHORT_ID=$(python -c $'import sys\n\nshorts = [s.strip() for s in sys.argv[1].split(",") if s.strip()]\nprint(shorts[0] if shorts else "")' "${XRAY_SHORT_IDS:-}")
 
           if [ -n "$SHORT_ID" ]; then
-            SID_PARAM="&sid=$(python - "$SHORT_ID" <<'PY'
-import sys, urllib.parse
-
-print(urllib.parse.quote(sys.argv[1]))
-PY
-)"
+            SID_PARAM="&sid=$(python -c $'import sys, urllib.parse\n\nprint(urllib.parse.quote(sys.argv[1]))' "$SHORT_ID")"
           else
             SID_PARAM=""
             echo "::warning::No short IDs detected; skipping sid parameter in generated URIs."
@@ -228,88 +197,26 @@ PY
 
           PUBLIC_KEY="${XRAY_PUBLIC_KEY:-}"
           if [ -n "$PUBLIC_KEY" ]; then
-            PBK_PARAM="&pbk=$(python - "$PUBLIC_KEY" <<'PY'
-import sys, urllib.parse
-
-print(urllib.parse.quote(sys.argv[1]))
-PY
-)"
+            PBK_PARAM="&pbk=$(python -c $'import sys, urllib.parse\n\nprint(urllib.parse.quote(sys.argv[1]))' "$PUBLIC_KEY")"
           else
             PBK_PARAM=""
             echo "::warning::XRAY_PUBLIC_KEY secret is empty; pbk parameter will be omitted."
           fi
 
-          PORT=$(python - <<'PY'
-import yaml
-from pathlib import Path
-
-vars_path = Path("ansible/group_vars/all.yml")
-port = ""
-if vars_path.exists():
-    data = yaml.safe_load(vars_path.read_text()) or {}
-    host_port = data.get("xray_host_port")
-    if host_port is not None:
-        port = str(host_port)
-print(port)
-PY
-)
+          PORT=$(python -c $'import yaml\nfrom pathlib import Path\n\nvars_path = Path("ansible/group_vars/all.yml")\nport = ""\nif vars_path.exists():\n    data = yaml.safe_load(vars_path.read_text()) or {}\n    host_port = data.get("xray_host_port")\n    if host_port is not None:\n        port = str(host_port)\nprint(port)')
           PORT=${PORT:-443}
 
           FLOW="xtls-rprx-vision"
           ALPN_ENCODED="h2%2Chttp%2F1.1"
           CLIENT_NAME="Less Vision Reality (${DOMAIN})"
-          NAME_ENCODED=$(python - "$CLIENT_NAME" <<'PY'
-import sys, urllib.parse
-
-print(urllib.parse.quote(sys.argv[1]))
-PY
-)
+          NAME_ENCODED=$(python -c $'import sys, urllib.parse\n\nprint(urllib.parse.quote(sys.argv[1]))' "$CLIENT_NAME")
 
           SHADOWROCKET_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
           CLASH_META_URI="vless://${UUID}@${DOMAIN}:${PORT}?encryption=none&security=tls&type=tcp&flow=${FLOW}&sni=${DOMAIN}&alpn=${ALPN_ENCODED}&fp=chrome${PBK_PARAM}${SID_PARAM}#${NAME_ENCODED}"
 
           export CLIENT_NAME DOMAIN PORT UUID FLOW PUBLIC_KEY SHORT_ID
 
-          CLASH_VERGE_BLOCK=$(python - <<'PY'
-import os
-
-client_name = os.environ["CLIENT_NAME"]
-domain = os.environ["DOMAIN"]
-port = os.environ["PORT"]
-uuid = os.environ["UUID"]
-flow = os.environ["FLOW"]
-public_key = os.environ.get("PUBLIC_KEY", "")
-short_id = os.environ.get("SHORT_ID", "")
-
-lines = [
-    f"- name: {client_name}",
-    "  type: vless",
-    f"  server: {domain}",
-    f"  port: {port}",
-    f"  uuid: {uuid}",
-    "  cipher: none",
-    "  tls: true",
-    "  network: tcp",
-    f"  flow: {flow}",
-    "  udp: true",
-    f"  servername: {domain}",
-    "  alpn:",
-    "    - h2",
-    "    - http/1.1",
-]
-
-if public_key or short_id:
-    lines.append("  reality-opts:")
-    if public_key:
-        lines.append(f"    public-key: {public_key}")
-    if short_id:
-        lines.append(f"    short-id: {short_id}")
-
-lines.append("  client-fingerprint: chrome")
-
-print("\n".join(lines))
-PY
-)
+          CLASH_VERGE_BLOCK=$(python -c $'import os\n\nclient_name = os.environ["CLIENT_NAME"]\ndomain = os.environ["DOMAIN"]\nport = os.environ["PORT"]\nuuid = os.environ["UUID"]\nflow = os.environ["FLOW"]\npublic_key = os.environ.get("PUBLIC_KEY", "")\nshort_id = os.environ.get("SHORT_ID", "")\n\nlines = [\n    f"- name: {client_name}",\n    "  type: vless",\n    f"  server: {domain}",\n    f"  port: {port}",\n    f"  uuid: {uuid}",\n    "  cipher: none",\n    "  tls: true",\n    "  network: tcp",\n    f"  flow: {flow}",\n    "  udp: true",\n    f"  servername: {domain}",\n    "  alpn:",\n    "    - h2",\n    "    - http/1.1",\n]\n\nif public_key or short_id:\n    lines.append("  reality-opts:")\n    if public_key:\n        lines.append(f"    public-key: {public_key}")\n    if short_id:\n        lines.append(f"    short-id: {short_id}")\n\nlines.append("  client-fingerprint: chrome")\n\nprint("\\n".join(lines))')
 
           if ! command -v qrencode >/dev/null 2>&1; then
             echo "Installing qrencode for QR code output..."
