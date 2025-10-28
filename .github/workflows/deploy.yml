@@ -28,11 +28,7 @@ on:
         default: ""
 
 concurrency:
-  group: deploy-${{
-    github.event_name == 'workflow_dispatch' && github.event.inputs.environment
-    || github.event_name == 'workflow_call' && inputs.environment
-    || 'unspecified'
-  }}
+  group: deploy-${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || (github.event_name == 'workflow_call' && inputs.environment) || 'unspecified' }}
   cancel-in-progress: false
 
 jobs:
@@ -45,11 +41,7 @@ jobs:
       - name: Ensure environment exists
         id: ensure
         env:
-          REQUESTED_ENVIRONMENT: ${{
-            github.event_name == 'workflow_dispatch' && github.event.inputs.environment
-            || github.event_name == 'workflow_call' && inputs.environment
-            || ''
-          }}
+          REQUESTED_ENVIRONMENT: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || (github.event_name == 'workflow_call' && inputs.environment) || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
@@ -147,11 +139,7 @@ jobs:
 
       - name: Run Ansible playbook
         env:
-          LIMIT: ${{
-            github.event_name == 'workflow_dispatch' && github.event.inputs.limit
-            || github.event_name == 'workflow_call' && inputs.limit
-            || ''
-          }}
+          LIMIT: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.limit) || (github.event_name == 'workflow_call' && inputs.limit) || '' }}
         shell: bash
         run: |
           set -euo pipefail
