@@ -13,9 +13,26 @@ on:
           Optional Ansible limit pattern (host or group) to scope the deployment.
         required: false
         default: ""
+  workflow_call:
+    inputs:
+      environment:
+        description: >-
+          GitHub environment that contains the deployment secrets.
+        required: true
+        type: string
+      limit:
+        description: >-
+          Optional Ansible limit pattern (host or group) to scope the deployment.
+        required: false
+        type: string
+        default: ""
 
 concurrency:
-  group: deploy-${{ github.event.inputs.environment || 'unspecified' }}
+  group: deploy-${{
+    github.event_name == 'workflow_dispatch' && github.event.inputs.environment
+    || github.event_name == 'workflow_call' && inputs.environment
+    || 'unspecified'
+  }}
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +45,11 @@ jobs:
       - name: Ensure environment exists
         id: ensure
         env:
-          REQUESTED_ENVIRONMENT: ${{ github.event.inputs.environment }}
+          REQUESTED_ENVIRONMENT: ${{
+            github.event_name == 'workflow_dispatch' && github.event.inputs.environment
+            || github.event_name == 'workflow_call' && inputs.environment
+            || ''
+          }}
           GITHUB_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
@@ -121,48 +142,16 @@ jobs:
             IdentitiesOnly yes
           CONFIG
 
-      - name: Render inventory from environment variables
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          HOST_IP="${REMOTE_SERVER_IP_ADDRESS:-}"
-          HOST_USER="${REMOTE_SERVER_USER:-}"
-          HOST_PORT="${REMOTE_SERVER_PORT:-}"
-
-          if [ -n "$HOST_PORT" ]; then
-            PORT_VALUE="$HOST_PORT"
-          else
-            PORT_VALUE="22"
-          fi
-
-          if [ -n "$HOST_IP" ] && [ -n "$HOST_USER" ]; then
-            INVENTORY_PATH="ansible/inventory.runtime.yml"
-            cat <<EOF > "$INVENTORY_PATH"
-all:
-  children:
-    xray_servers:
-      hosts:
-        remote-xray-host:
-          ansible_host: $HOST_IP
-          ansible_user: $HOST_USER
-          ansible_port: $PORT_VALUE
-          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
-EOF
-            echo "Using runtime inventory populated from REMOTE_SERVER_IP_ADDRESS and REMOTE_SERVER_USER."
-            {
-              echo "ANSIBLE_INVENTORY_PATH=$INVENTORY_PATH"
-            } >> "$GITHUB_ENV"
-          else
-            echo "REMOTE_SERVER_IP_ADDRESS or REMOTE_SERVER_USER not set; falling back to repository inventory." >&2
-          fi
-
       - name: Display Ansible version
         run: ansible --version
 
       - name: Run Ansible playbook
         env:
-          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || '' }}
+          LIMIT: ${{
+            github.event_name == 'workflow_dispatch' && github.event.inputs.limit
+            || github.event_name == 'workflow_call' && inputs.limit
+            || ''
+          }}
         shell: bash
         run: |
           set -euo pipefail
@@ -170,7 +159,22 @@ EOF
           if [ -n "$LIMIT" ]; then
             LIMIT_ARGS+=("--limit" "$LIMIT")
           fi
-          ansible-playbook -i "$ANSIBLE_INVENTORY_PATH" ansible/site.yml "${LIMIT_ARGS[@]}"
+
+          INVENTORY_ARGS=()
+          HOST_IP="${REMOTE_SERVER_IP_ADDRESS:-}"
+          HOST_USER="${REMOTE_SERVER_USER:-}"
+          HOST_PORT="${REMOTE_SERVER_PORT:-}"
+
+          if [ -n "$HOST_IP" ] && [ -n "$HOST_USER" ]; then
+            INVENTORY_ARGS+=("--inventory" "${HOST_IP}," "--user" "$HOST_USER")
+            if [ -n "$HOST_PORT" ]; then
+              INVENTORY_ARGS+=("--ssh-extra-args" "-p $HOST_PORT")
+            fi
+          else
+            INVENTORY_ARGS+=("--inventory" "$ANSIBLE_INVENTORY_PATH")
+          fi
+
+          ansible-playbook "${INVENTORY_ARGS[@]}" ansible/site.yml "${LIMIT_ARGS[@]}"
 
       - name: Display client connection details
         if: success()

@@ -27,32 +27,42 @@
       loop: "{{ xray_required_vars }}"
 
   tasks:
-    - name: Detect existing Xray container
-      ansible.builtin.command:
-        argv:
-          - docker
-          - ps
-          - "--all"
-          - "--filter"
-          - "name=^/{{ xray_service_name }}$"
-          - "--format"
-          - "{{'{{.ID}}'}}"
-      register: xray_existing_container
+    - name: Discover conflicting Xray containers
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker ps --format "{{'{{.ID}} {{.Image}} {{.Ports}}'}}" \
+          | awk 'BEGIN{IGNORECASE=1} /xray/ || /443->/ {print $1}'
+      register: xray_conflicting_containers_raw
       changed_when: false
       failed_when: false
 
-    - name: Remove existing Xray container before deployment
+    - name: Collect conflicting Xray container IDs
+      ansible.builtin.set_fact:
+        xray_conflicting_container_ids: >-
+          {{
+            (xray_conflicting_containers_raw.stdout_lines | default([]))
+            | reject('equalto', '')
+            | unique
+            | list
+          }}
+
+    - name: Stop conflicting Xray containers
+      ansible.builtin.command:
+        argv:
+          - docker
+          - stop
+          - "{{ item }}"
+      loop: "{{ xray_conflicting_container_ids }}"
+      when: xray_conflicting_container_ids | length > 0
+
+    - name: Remove conflicting Xray containers
       ansible.builtin.command:
         argv:
           - docker
           - rm
-          - "--force"
-          - "{{ xray_service_name }}"
-      when: >-
-        xray_existing_container.rc == 0
-        and (xray_existing_container.stdout | default('', true) | trim | length > 0)
-      register: xray_removed_container
-      changed_when: xray_removed_container.rc == 0
+          - "{{ item }}"
+      loop: "{{ xray_conflicting_container_ids }}"
+      when: xray_conflicting_container_ids | length > 0
 
     - name: Determine effective Reality SNI
       ansible.builtin.set_fact:
@@ -145,6 +155,14 @@
       register: xray_container_logs
       changed_when: false
       failed_when: false
+      when: xray_container_state.rc != 0 or xray_container_status != 'running'
+
+    - name: Show recent Xray container logs when status is unexpected
+      ansible.builtin.debug:
+        msg:
+          - "Xray container inspect rc={{ xray_container_state.rc }}, status={{ xray_container_status }}, health={{ xray_container_health }}"
+          - "Recent logs (last 100 lines):"
+          - "{{ (xray_container_logs.stdout | default('', true) | trim) or '[no logs captured]' }}"
       when: xray_container_state.rc != 0 or xray_container_status != 'running'
 
     - name: Ensure Xray container is running
