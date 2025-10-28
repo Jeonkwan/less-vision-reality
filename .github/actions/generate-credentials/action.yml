@@ -1,39 +1,60 @@
 name: Generate Xray Credentials
+description: Generate UUIDs, short IDs, and Reality key pairs using dedicated utility containers
 inputs: {}
 runs:
   using: composite
   steps:
-    - name: Output Reality credentials
+    - name: Generate UUID
+      id: uuid
       shell: sh
       run: |
         set -eu
 
-        UUID=$(xray uuid | tr -d '\r')
+        UUID=$(docker run --rm cgr.dev/chainguard/util-linux uuidgen | tr -d '\r')
 
-        generate_short_id() {
-          if command -v openssl >/dev/null 2>&1; then
-            openssl rand -hex 8 | tr -d '\n'
-          elif command -v od >/dev/null 2>&1; then
-            od -vAn -N4 -tx1 /dev/urandom | tr -d ' \n'
-          elif command -v hexdump >/dev/null 2>&1; then
-            hexdump -vn4 -e '1/1 "%02x"' /dev/urandom
-          else
-            tr -dc 'a-f0-9' < /dev/urandom | head -c 8
-          fi
-        }
+        printf 'UUID=%s\n' "$UUID" >>"$GITHUB_ENV"
 
-        set --
+    - name: Generate short IDs
+      id: short_ids
+      shell: sh
+      run: |
+        set -eu
+
+        SHORT_IDS=""
         for _ in 1 2 3; do
-          set -- "$@" "$(generate_short_id)"
+          ID=$(docker run --rm cgr.dev/chainguard/openssl openssl rand -hex 8 | tr -d '\r\n')
+          if [ -z "$SHORT_IDS" ]; then
+            SHORT_IDS="$ID"
+          else
+            SHORT_IDS="$SHORT_IDS $ID"
+          fi
         done
 
-        XRAY_KEYS=$(xray x25519)
+        printf 'SHORT_IDS=%s\n' "$SHORT_IDS" >>"$GITHUB_ENV"
+
+    - name: Generate Xray key pair
+      id: xray_keys
+      shell: sh
+      run: |
+        set -eu
+
+        XRAY_KEYS=$(docker run --rm ghcr.io/xtls/xray-core:latest xray x25519)
         PRIVATE_KEY=$(printf '%s\n' "$XRAY_KEYS" | awk -F': ' '/Private key/{print $2}')
         PUBLIC_KEY=$(printf '%s\n' "$XRAY_KEYS" | awk -F': ' '/Public key/{print $2}')
+
+        printf 'PRIVATE_KEY=%s\n' "$PRIVATE_KEY" >>"$GITHUB_ENV"
+        printf 'PUBLIC_KEY=%s\n' "$PUBLIC_KEY" >>"$GITHUB_ENV"
+
+    - name: Publish credentials
+      shell: sh
+      run: |
+        set -eu
 
         OUTPUT_DIR="${RUNNER_TEMP:-/tmp}"
         mkdir -p "$OUTPUT_DIR"
         OUTPUT_FILE="$OUTPUT_DIR/xray-credentials.txt"
+
+        set -- $SHORT_IDS
         {
           echo "XRAY_UUID: $UUID"
           echo "XRAY_SHORT_IDS:"
@@ -48,6 +69,7 @@ runs:
         cat "$OUTPUT_FILE"
         echo "::endgroup::"
 
+        set -- $SHORT_IDS
         {
           echo "### Generated Xray Credentials"
           echo

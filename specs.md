@@ -51,6 +51,6 @@
 
 ## Credential Generation Workflow
 - Triggered manually via the **Generate Xray Credentials (manual)** workflow or automatically for pull requests via **Generate Xray Credentials (PR check)**.
-- Runs inside the `ghcr.io/xtls/xray-core:latest` container to call `xray uuid`, generate three random short IDs (preferring `openssl rand -hex 8` when available), and derive Reality x25519 key pairs.
+- Uses dedicated utility containers to isolate each step: Chainguard's `util-linux` image for `uuidgen`, Chainguard's `openssl` image for generating short IDs, and the official `ghcr.io/xtls/xray-core:latest` image for Reality key pairs.
 - Emits values only to the job log and step summary so operators can copy/paste secrets without persisting artifacts.
 - Operators must securely store the emitted UUID, short IDs, and keys before running Ansible.
