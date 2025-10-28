@@ -1,0 +1,38 @@
+---
+# Global variables for the Xray docker compose deployment.
+#
+# Sensitive values (UUIDs, short IDs, keys) should be injected via
+# Ansible Vault, `--extra-vars`, or environment variables. For example:
+#   ansible-playbook -i inventory.yml site.yml \
+#     -e xray_uuid=$XRAY_UUID \
+#     -e "xray_short_ids=$XRAY_SHORT_IDS" \
+#     -e xray_reality_private_key=$XRAY_PRIVATE_KEY \
+#     -e xray_reality_public_key=$XRAY_PUBLIC_KEY
+#
+# When environment variables are provided they override the defaults below.
+
+xray_service_name: xray
+xray_service_root: /opt/xray
+xray_config_path: "{{ xray_service_root }}/config"
+xray_config_file: config.json
+xray_compose_file: "{{ xray_service_root }}/docker-compose.yml"
+xray_container_image: ghcr.io/xtls/xray-core:latest
+xray_restart_policy: unless-stopped
+xray_host_port: 443
+xray_container_port: 443
+xray_compose_environment: {}
+xray_compose_networks: []
+
+xray_uuid: "{{ lookup('env', 'XRAY_UUID') | default('00000000-0000-4000-8000-000000000000', true) }}"
+xray_short_ids_env: "{{ lookup('env', 'XRAY_SHORT_IDS') | default('', true) }}"
+xray_short_ids: >-
+  {{
+    (xray_short_ids_env.split(',') | map('trim') | reject('equalto', '') | list)
+    if xray_short_ids_env | length > 0
+    else ['a1b2c3d4']
+  }}
+xray_reality_private_key: "{{ lookup('env', 'XRAY_PRIVATE_KEY') | default('REPLACE_WITH_PRIVATE_KEY', true) }}"
+xray_reality_public_key: "{{ lookup('env', 'XRAY_PUBLIC_KEY') | default('REPLACE_WITH_PUBLIC_KEY', true) }}"
+# Optional Server Name Indication value for Reality handshakes.
+# Defaults to www.bing.com when omitted or empty.
+xray_sni: "{{ lookup('env', 'XRAY_SNI') | default('', true) }}"

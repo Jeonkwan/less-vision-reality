@@ -1,0 +1,31 @@
+name: PR Check
+
+on:
+  pull_request:
+
+jobs:
+  ansible-syntax:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible-core
+
+      - name: Run Ansible syntax check
+        env:
+          XRAY_UUID: 00000000-0000-0000-0000-000000000000
+          XRAY_SHORT_IDS: deadbeefcafebabe
+          XRAY_PRIVATE_KEY: FAKE_PRIVATE_KEY
+          XRAY_PUBLIC_KEY: FAKE_PUBLIC_KEY
+        run: |
+          ansible-playbook -i ansible/inventory.yml ansible/site.yml --syntax-check

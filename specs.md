@@ -1,57 +1,50 @@
 # Project Specifications
 
 ## Functional Requirements
-- Provide infrastructure automation via Ansible playbooks to deploy the service and manage dependencies.
-- Supply containerized runtime environments using Docker for local development, testing, and production deployments.
-- Automate CI/CD workflows through GitHub Actions, including linting, testing, and deployment steps.
-- Support secure configuration through externally supplied identifiers and keys (UUID, shortIds, Xray keys) and optional decoy SNI handling.
+- Provide infrastructure automation via Ansible for deploying the Xray Vision/Reality service with Docker Compose.
+- Support templating of Xray server configuration and Docker Compose manifests from operator-supplied variables.
+- Expose lifecycle controls (stop, reload, recreate) through tagged Ansible tasks.
+- Document configuration inputs so operators can supply secrets through inventories, extra vars, or environment overrides.
 
 ## Non-Functional Requirements
 - Maintain secure handling of secrets and environment variables throughout automation workflows.
-- Ensure documentation remains synchronized with implementation changes to facilitate onboarding and compliance.
-- Design for portability between local development, CI, and production environments by standardizing tooling.
-- Optimize for maintainability through modular directory organization and reusable infrastructure code.
+- Ensure playbooks are idempotent by regenerating configuration and reapplying Docker Compose only when templates change.
+- Keep documentation synchronized with implemented automation to facilitate onboarding and review.
+- Provide automated pull request checks that run Ansible syntax validation to guard against breaking playbook changes.
 
-## Planned Architecture
-- **Automation Layer:** Ansible playbooks in `ansible/` orchestrate provisioning, configuration, and runtime setup, consuming inventory variables that include UUIDs, shortIds, Xray keys, and decoy SNI values.
-- **Containerization Layer:** Dockerfiles and compose definitions in `docker/` build and run application services, referencing the same variable inputs via environment files or secrets management.
-- **Application Layer:** Core application code resides under `src/`, structured into domain-specific modules with shared utilities in `src/common/` and configuration in `src/config/`.
-- **Observability & Security:** Monitoring and logging configuration housed in `ops/` integrates with the automation layer, ensuring secure propagation of sensitive identifiers.
-- **CI/CD Pipeline:** GitHub Actions workflows in `.github/workflows/` trigger automated tests, security scans, and deployments, relying on repository secrets for UUID, shortIds, Xray keys, and decoy SNI when required.
+## Current Architecture
+- **Automation Layer:** `ansible/site.yml` orchestrates validation, configuration rendering, Docker Compose generation, and service application. Templates live in `ansible/templates/`. Shared variables are demonstrated in `ansible/group_vars/all.yml`.
+- **Containerization Layer:** Runtime defined dynamically through `ansible/templates/docker-compose.yml.j2`, leveraging the public `ghcr.io/xtls/xray-core:latest` image and mounting generated configuration.
+- **Configuration Inputs:** UUID, short IDs, Reality keys, and optional SNI values are surfaced as Ansible variables with environment overrides documented in `ansible/group_vars/all.yml`.
+- **Continuous Integration:** `.github/workflows/pr-check.yml` executes `ansible-playbook --syntax-check` during pull request validation using representative environment variables.
 
-## Intended Directory Tree
+## Directory Overview
 ```
 /
 ├── ansible/
-│   ├── inventories/
-│   ├── playbooks/
-│   └── roles/
-├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml
-├── src/
-│   ├── common/
-│   ├── config/
-│   └── services/
-├── ops/
-│   ├── logging/
-│   └── monitoring/
-├── docs/
-│   └── architecture/
-├── .github/
-│   └── workflows/
-├── tests/
+│   ├── group_vars/
+│   │   └── all.yml
+│   ├── inventory.yml
+│   ├── site.yml
+│   └── templates/
+│       ├── config.json.j2
+│       └── docker-compose.yml.j2
 ├── README.md
 └── specs.md
 ```
 
 ## Variable Inputs and Consumption
-- **UUID:** Unique identifier for deployed instances. Defined within Ansible inventory variables (`ansible/inventories/group_vars/*.yml`), passed through Docker runtime environment variables, and stored as an encrypted secret (`UUID`) for GitHub Actions workflows.
-- **shortIds:** Short-form identifiers used for service discovery or lightweight tagging. Managed alongside UUIDs in Ansible inventories, surfaced as Docker environment variables, and injected into GitHub Actions via repository secrets (`SHORT_IDS`).
-- **Xray Keys:** Credentials or API keys required by observability tooling. Secured in Ansible vault files, mounted into Docker containers as secrets, and referenced by GitHub Actions using encrypted secrets (`XRAY_KEYS`).
-- **Decoy SNI (optional, defaults to `www.bing.com`):** Configurable Server Name Indication used for obfuscation. Defaults are maintained in Ansible group variables, with overrides permitted via extra vars. Docker services consume this value through environment files, while GitHub Actions reference a secret (`DECOY_SNI`) when an override is needed; otherwise they rely on the default.
+- **xray_uuid:** Primary UUID for the Vision/Reality client. Operators override via inventory, vault, `--extra-vars`, or the `XRAY_UUID` environment variable when invoking Ansible.
+- **xray_short_ids:** Short identifiers for Reality. Accepts a YAML list and can be overridden through the `XRAY_SHORT_IDS` environment variable (comma separated) or explicit vars.
+- **xray_reality_private_key / xray_reality_public_key:** Reality key pair expected from secure storage. Example fallbacks are placeholders; operators must supply real values via vault or environment variables (`XRAY_PRIVATE_KEY`, `XRAY_PUBLIC_KEY`).
+- **xray_sni:** Optional decoy SNI, defaulting to `www.bing.com` when empty.
+- **xray_container_image / ports / restart policy:** Infrastructure defaults that can be tuned per inventory to match deployment needs.
 
-## Living Document Guidance
-- Treat `specs.md` as a living document: every change to architecture, requirements, variable inputs, or directory layout must include corresponding updates to this file within the same change set.
-- Code reviewers should verify that modifications affecting infrastructure, automation, or application structure are reflected here to maintain accuracy over time.
-- Automated checks should be considered to ensure `specs.md` stays synchronized with implementation changes.
+## Operational Flow
+1. Validate required secrets/IDs are provided and ensure `docker compose` CLI is installed.
+2. Compute the effective SNI and create directories for configuration and compose artifacts under `xray_service_root`.
+3. Render `config.json` and `docker-compose.yml` from templates using supplied variables.
+4. Apply Docker Compose (`docker compose up -d --remove-orphans`) via handler when templates change. Optional tagged tasks allow manual `down`, `up`, or `force recreate` operations.
+
+## Documentation Expectations
+- Changes to automation or variable definitions must update this specification and any operator-facing documentation in `ansible/`.

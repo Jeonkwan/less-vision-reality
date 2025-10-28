@@ -1,0 +1,133 @@
+---
+- name: Deploy Xray container with Docker Compose
+  hosts: xray_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    xray_required_vars:
+      - xray_uuid
+      - xray_short_ids
+      - xray_reality_private_key
+      - xray_reality_public_key
+
+  pre_tasks:
+    - name: Ensure docker compose is available
+      ansible.builtin.command:
+        cmd: docker compose version
+      register: xray_compose_version
+      changed_when: false
+
+    - name: Validate required Xray variables
+      ansible.builtin.assert:
+        that:
+          - (hostvars[inventory_hostname][item] | default('', true)) | length > 0
+        fail_msg: "Variable '{{ item }}' must be provided for Xray deployment."
+        success_msg: "Variable '{{ item }}' is defined."
+      loop: "{{ xray_required_vars }}"
+
+  tasks:
+    - name: Determine effective Reality SNI
+      ansible.builtin.set_fact:
+        xray_effective_sni: "{{ (xray_sni | default('', true) | trim) or 'www.bing.com' }}"
+
+    - name: Ensure Xray service root exists
+      ansible.builtin.file:
+        path: "{{ xray_service_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ensure Xray configuration directory exists
+      ansible.builtin.file:
+        path: "{{ xray_config_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Template Xray Reality/Vision configuration
+      ansible.builtin.template:
+        src: config.json.j2
+        dest: "{{ xray_config_path }}/{{ xray_config_file }}"
+        owner: root
+        group: root
+        mode: "0640"
+      notify: Apply docker compose deployment
+
+    - name: Template docker compose definition
+      ansible.builtin.template:
+        src: docker-compose.yml.j2
+        dest: "{{ xray_compose_file }}"
+        owner: root
+        group: root
+        mode: "0640"
+      notify: Apply docker compose deployment
+
+    - name: Apply configuration immediately when changes occur
+      ansible.builtin.meta: flush_handlers
+
+    - name: Stop Xray services
+      ansible.builtin.command:
+        cmd: docker compose -f {{ xray_compose_file }} down --remove-orphans
+        chdir: "{{ xray_service_root }}"
+      register: xray_compose_down
+      changed_when: >-
+        ('Removing' in xray_compose_down.stdout) or
+        ('Removing' in xray_compose_down.stderr) or
+        ('Stopping' in xray_compose_down.stdout) or
+        ('Stopping' in xray_compose_down.stderr)
+      tags:
+        - never
+        - xray_down
+
+    - name: Reload Xray services
+      ansible.builtin.command:
+        cmd: docker compose -f {{ xray_compose_file }} up -d
+        chdir: "{{ xray_service_root }}"
+      register: xray_compose_reload
+      changed_when: >-
+        ('Creating' in xray_compose_reload.stdout) or
+        ('Creating' in xray_compose_reload.stderr) or
+        ('Recreating' in xray_compose_reload.stdout) or
+        ('Recreating' in xray_compose_reload.stderr) or
+        ('Starting' in xray_compose_reload.stdout) or
+        ('Starting' in xray_compose_reload.stderr)
+      tags:
+        - never
+        - xray_reload
+
+    - name: Force recreate Xray services
+      ansible.builtin.command:
+        cmd: docker compose -f {{ xray_compose_file }} up -d --force-recreate --remove-orphans
+        chdir: "{{ xray_service_root }}"
+      register: xray_compose_recreate
+      changed_when: >-
+        ('Creating' in xray_compose_recreate.stdout) or
+        ('Creating' in xray_compose_recreate.stderr) or
+        ('Recreating' in xray_compose_recreate.stdout) or
+        ('Recreating' in xray_compose_recreate.stderr) or
+        ('Starting' in xray_compose_recreate.stdout) or
+        ('Starting' in xray_compose_recreate.stderr)
+      tags:
+        - never
+        - xray_recreate
+
+  handlers:
+    - name: Apply docker compose deployment
+      ansible.builtin.command:
+        cmd: docker compose -f {{ xray_compose_file }} up -d --remove-orphans
+        chdir: "{{ xray_service_root }}"
+      register: xray_compose_up
+      changed_when: >-
+        ('Creating' in xray_compose_up.stdout) or
+        ('Creating' in xray_compose_up.stderr) or
+        ('Recreating' in xray_compose_up.stdout) or
+        ('Recreating' in xray_compose_up.stderr) or
+        ('Starting' in xray_compose_up.stdout) or
+        ('Starting' in xray_compose_up.stderr) or
+        ('Pulling' in xray_compose_up.stdout) or
+        ('Pulling' in xray_compose_up.stderr) or
+        ('Downloading' in xray_compose_up.stdout) or
+        ('Downloading' in xray_compose_up.stderr)

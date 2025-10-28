@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  {{ xray_service_name }}:
+    image: "{{ xray_container_image }}"
+    container_name: "{{ xray_service_name }}"
+    restart: "{{ xray_restart_policy }}"
+    ports:
+      - "{{ xray_host_port }}:{{ xray_container_port }}"
+    volumes:
+      - "{{ xray_config_path }}/{{ xray_config_file }}:/etc/xray/config.json:ro"
+{% if xray_compose_environment %}
+    environment:
+{% for key, value in xray_compose_environment.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if xray_compose_networks %}
+    networks:
+{% for net in xray_compose_networks %}
+      - "{{ net }}"
+{% endfor %}
+{% endif %}
