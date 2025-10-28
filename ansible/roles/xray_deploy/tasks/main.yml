@@ -51,12 +51,17 @@
   changed_when: false
   failed_when: false
 
+- name: Cache Xray container inspect metadata
+  ansible.builtin.set_fact:
+    xray_deploy_container_rc: "{{ xray_deploy_container_state.rc | default(1) }}"
+    xray_deploy_container_stderr: "{{ xray_deploy_container_state.stderr | default('', true) }}"
+
 - name: Derive Xray container details from inspect output
   ansible.builtin.set_fact:
     xray_deploy_container_details: >-
       {{
         xray_deploy_container_state.stdout | from_json
-        if xray_deploy_container_state.rc == 0 and (xray_deploy_container_state.stdout | default('') | trim | length > 0)
+        if xray_deploy_container_rc == 0 and (xray_deploy_container_state.stdout | default('') | trim | length > 0)
         else {}
       }}
 
@@ -75,15 +80,19 @@
         else 'unknown'
       }}
 
+- name: Determine whether Xray deployment needs recovery
+  ansible.builtin.set_fact:
+    xray_deploy_needs_recovery: "{{ ((xray_deploy_container_rc | int) != 0 or xray_deploy_container_status != 'running') | bool }}"
+
 - name: Show Xray container inspect diagnostics (verbose)
   ansible.builtin.debug:
     msg:
-      - "Inspect rc={{ xray_deploy_container_state.rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
-      - "Inspect stderr={{ xray_deploy_container_state.stderr | default('') | trim }}"
+      - "Inspect rc={{ xray_deploy_container_rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
+      - "Inspect stderr={{ xray_deploy_container_stderr | trim }}"
     verbosity: 1
 
 - name: Attempt to recover Xray deployment when container is missing or stopped
-  when: xray_deploy_container_state.rc != 0 or xray_deploy_container_status != 'running'
+  when: xray_deploy_needs_recovery | bool
   block:
     - name: Reapply docker compose deployment when container is missing or stopped
       ansible.builtin.command:
@@ -124,12 +133,17 @@
       changed_when: false
       failed_when: false
 
+    - name: Cache Xray container inspect metadata after recovery
+      ansible.builtin.set_fact:
+        xray_deploy_container_rc: "{{ xray_deploy_container_state.rc | default(1) }}"
+        xray_deploy_container_stderr: "{{ xray_deploy_container_state.stderr | default('', true) }}"
+
     - name: Refresh Xray container details after recovery
       ansible.builtin.set_fact:
         xray_deploy_container_details: >-
           {{
             xray_deploy_container_state.stdout | from_json
-            if xray_deploy_container_state.rc == 0 and (xray_deploy_container_state.stdout | default('') | trim | length > 0)
+            if xray_deploy_container_rc == 0 and (xray_deploy_container_state.stdout | default('') | trim | length > 0)
             else {}
           }}
 
@@ -148,11 +162,15 @@
             else 'unknown'
           }}
 
+    - name: Update recovery flag after compose remediation
+      ansible.builtin.set_fact:
+        xray_deploy_needs_recovery: "{{ ((xray_deploy_container_rc | int) != 0 or xray_deploy_container_status != 'running') | bool }}"
+
     - name: Show Xray container inspect diagnostics after recovery (verbose)
       ansible.builtin.debug:
         msg:
-          - "Post-recovery inspect rc={{ xray_deploy_container_state.rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
-          - "Post-recovery inspect stderr={{ xray_deploy_container_state.stderr | default('') | trim }}"
+          - "Post-recovery inspect rc={{ xray_deploy_container_rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
+          - "Post-recovery inspect stderr={{ xray_deploy_container_stderr | trim }}"
         verbosity: 1
 
 - name: Capture recent Xray container logs on failure
@@ -166,27 +184,27 @@
   register: xray_deploy_container_logs
   changed_when: false
   failed_when: false
-  when: xray_deploy_container_state.rc != 0 or xray_deploy_container_status != 'running'
+  when: xray_deploy_needs_recovery | bool
 
 - name: Show recent Xray container logs when status is unexpected
   ansible.builtin.debug:
     msg:
-      - "Xray container inspect rc={{ xray_deploy_container_state.rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
+      - "Xray container inspect rc={{ xray_deploy_container_rc }}, status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}"
       - "Recent logs (last 300 lines):"
-      - "{{ (xray_deploy_container_logs.stdout | default('', true) | trim) or '[no logs captured]' }}"
-  when: xray_deploy_container_state.rc != 0 or xray_deploy_container_status != 'running'
+      - "{{ ((xray_deploy_container_logs | default({'stdout': ''}, true)).stdout | default('', true) | trim) or '[no logs captured]' }}"
+  when: xray_deploy_needs_recovery | bool
 
 - name: Ensure Xray container is running
   ansible.builtin.assert:
     that:
-      - xray_deploy_container_state.rc == 0
+      - xray_deploy_container_rc == 0
       - xray_deploy_container_status == 'running'
     fail_msg: >-
       Xray container failed to reach the running state within 60 seconds.
-      Inspect returned rc={{ xray_deploy_container_state.rc }}, status={{ xray_deploy_container_status }},
-      health={{ xray_deploy_container_health }}, stderr="{{ xray_deploy_container_state.stderr | default('') | trim }}".
+      Inspect returned rc={{ xray_deploy_container_rc }}, status={{ xray_deploy_container_status }},
+      health={{ xray_deploy_container_health }}, stderr="{{ xray_deploy_container_stderr | trim }}".
       Recent logs (last 300 lines):
-      {{ (xray_deploy_container_logs.stdout | default('', true) | trim) or '[no logs captured]' }}
+      {{ ((xray_deploy_container_logs | default({'stdout': ''}, true)).stdout | default('', true) | trim) or '[no logs captured]' }}
     success_msg: >-
       Xray container is running (status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}).
 
