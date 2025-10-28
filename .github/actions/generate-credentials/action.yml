@@ -1,0 +1,33 @@
+name: Generate Xray Credentials
+description: Generate UUIDs, short IDs, and Reality key pairs using dedicated utility containers
+inputs: {}
+runs:
+  using: composite
+  steps:
+    - name: Generate UUID
+      id: uuid
+      uses: docker://docker.io/library/alpine:3.19
+      with:
+        entrypoint: /bin/sh
+        args: /github/workspace/.github/actions/generate-credentials/scripts/uuid.sh
+
+    - name: Generate short IDs
+      id: short_ids
+      uses: docker://docker.io/library/alpine:3.19
+      with:
+        entrypoint: /bin/sh
+        args: /github/workspace/.github/actions/generate-credentials/scripts/short-ids.sh
+
+    - name: Generate Xray key pair
+      id: xray_keys
+      shell: sh
+      run: $GITHUB_ACTION_PATH/scripts/xray-keys.sh
+
+    - name: Publish credentials
+      shell: sh
+      env:
+        UUID: ${{ steps.uuid.outputs.value }}
+        SHORT_IDS: ${{ steps.short_ids.outputs.value }}
+        PRIVATE_KEY: ${{ steps.xray_keys.outputs.private }}
+        PUBLIC_KEY: ${{ steps.xray_keys.outputs.public }}
+      run: $GITHUB_ACTION_PATH/scripts/publish.sh

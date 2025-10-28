@@ -16,7 +16,7 @@
 - **Automation Layer:** `ansible/site.yml` orchestrates validation, configuration rendering, Docker Compose generation, and service application. Templates live in `ansible/templates/`. Shared variables are demonstrated in `ansible/group_vars/all.yml`.
 - **Containerization Layer:** Runtime defined dynamically through `ansible/templates/docker-compose.yml.j2`, leveraging the public `ghcr.io/xtls/xray-core:latest` image and mounting generated configuration.
 - **Configuration Inputs:** UUID, short IDs, Reality keys, and optional SNI values are surfaced as Ansible variables with environment overrides documented in `ansible/group_vars/all.yml`.
-- **Continuous Integration:** `.github/workflows/pr-check.yml` executes `ansible-playbook --syntax-check` during pull request validation using representative environment variables. A manual workflow (`.github/workflows/generate-credentials.yml`) provides disposable UUIDs, short IDs, and Reality key pairs for operators.
+- **Continuous Integration:** `.github/workflows/pr-check.yml` executes `ansible-playbook --syntax-check` during pull request validation using representative environment variables. Dedicated credential workflows (`.github/workflows/generate-credentials-manual.yml` and `.github/workflows/generate-credentials-pr.yml`) provide disposable UUIDs, short IDs, and Reality key pairs whether triggered manually or during pull requests.
 
 ## Directory Overview
 ```
@@ -50,7 +50,7 @@
 - Changes to automation or variable definitions must update this specification and any operator-facing documentation in `ansible/`.
 
 ## Credential Generation Workflow
-- Triggered manually via the **Generate Xray Credentials** workflow in GitHub Actions.
-- Runs inside the `ghcr.io/xtls/xray-core:latest` container to call `xray uuid`, generate three random short IDs, and derive Reality x25519 key pairs.
+- Triggered manually via the **Generate Xray Credentials (manual)** workflow or automatically for pull requests via **Generate Xray Credentials (PR check)**.
+- Uses dedicated utility containers to isolate each step: Alpine-based runs install `util-linux` for `uuidgen`, separate Alpine runs install `openssl` to generate short IDs, and the official `ghcr.io/xtls/xray-core:25.10.15` image provides the `xray x25519` CLI. Because the image is distroless, the workflow invokes it via `docker run` on the host and normalizes either `Public key` or `Password` output into the published Reality public key.
 - Emits values only to the job log and step summary so operators can copy/paste secrets without persisting artifacts.
 - Operators must securely store the emitted UUID, short IDs, and keys before running Ansible.
