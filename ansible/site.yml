@@ -29,9 +29,41 @@
   tasks:
     - name: Discover conflicting Xray containers
       ansible.builtin.shell: |
-        set -o pipefail
-        docker ps -a --format "{{'{{.ID}} {{.Image}} {{.Ports}} {{.Names}}'}}" \
-          | awk 'BEGIN{IGNORECASE=1} /xray/ || /443->/ {print $1}'
+        set -euo pipefail
+        python3 <<'PY'
+        import json
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            sys.exit(0)
+
+        ids = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                info = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            image = (info.get("Image") or "").lower()
+            name = (info.get("Names") or "").lower()
+            ports = (info.get("Ports") or "").lower()
+
+            if "xray" in image or "xray" in name or "443->" in ports:
+                ids.append(info.get("ID"))
+
+        for container_id in dict.fromkeys(filter(None, ids)):
+            print(container_id)
+        PY
       register: xray_conflicting_containers_raw
       changed_when: false
       failed_when: false
@@ -58,9 +90,38 @@
 
     - name: Discover conflicting Xray Docker networks
       ansible.builtin.shell: |
-        set -o pipefail
-        docker network ls --format "{{'{{.Name}}'}}" \
-          | awk 'BEGIN{IGNORECASE=1} /xray/ {print $1}'
+        set -euo pipefail
+        python3 <<'PY'
+        import json
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            ["docker", "network", "ls", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            sys.exit(0)
+
+        networks = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                info = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            name = (info.get("Name") or "").lower()
+            if "xray" in name:
+                networks.append(info.get("Name"))
+
+        for network in dict.fromkeys(filter(None, networks)):
+            print(network)
+        PY
       register: xray_conflicting_networks_raw
       changed_when: false
       failed_when: false
