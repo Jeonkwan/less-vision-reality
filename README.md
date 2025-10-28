@@ -16,7 +16,7 @@ Use the **Generate Xray Credentials (manual)** workflow whenever you need dispos
 4. Copy the values from the step summary or grouped log output.
 5. Store the UUID, short IDs, and key pair securely (for example in your inventory variables or secrets manager).
 
-Behind the scenes the workflow pulls lightweight Alpine utility containers for each credential component: an Alpine image installs `util-linux` for `uuidgen`, another Alpine run installs `openssl` to emit three short IDs, and the `docker.io/teddysun/xray` image (which bundles a POSIX shell alongside the Xray binary) derives the Reality key pair. The same core steps execute automatically for pull requests via the **Generate Xray Credentials (PR check)** workflow so credential generation errors are caught during review. No artifacts are saved; outputs only appear in the job log and step summary for easy copy/paste.
+Behind the scenes the workflow pulls lightweight Alpine utility containers for each credential component: an Alpine image installs `util-linux` for `uuidgen`, another Alpine run installs `openssl` to emit three short IDs, and the `docker.io/teddysun/xray` image (which bundles a POSIX shell alongside the Xray binary) derives the Reality key pair. Modern Xray releases label the public key as `Password`, so the shared action normalizes that output and still surfaces `XRAY_PUBLIC_KEY` in the summary. The same core steps execute automatically for pull requests via the **Generate Xray Credentials (PR check)** workflow so credential generation errors are caught during review. No artifacts are saved; outputs only appear in the job log and step summary for easy copy/paste.
 
 ## Ansible Usage
 1. Review or edit default variables in `ansible/group_vars/all.yml`.
