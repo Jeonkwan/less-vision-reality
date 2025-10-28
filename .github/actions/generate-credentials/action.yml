@@ -32,4 +32,4 @@ runs:
         SHORT_IDS: ${{ steps.short_ids.outputs.value }}
         PRIVATE_KEY: ${{ steps.xray_keys.outputs.private }}
         PUBLIC_KEY: ${{ steps.xray_keys.outputs.public }}
-      run: /github/workspace/.github/actions/generate-credentials/scripts/publish.sh
+      run: $GITHUB_ACTION_PATH/scripts/publish.sh
