@@ -208,6 +208,17 @@
     success_msg: >-
       Xray container is running (status={{ xray_deploy_container_status }}, health={{ xray_deploy_container_health }}).
 
+- name: Schedule daily host reboot for Xray maintenance (04:00 CST / 20:00 UTC)
+  ansible.builtin.cron:
+    name: Daily reboot to refresh Xray environment
+    minute: "0"
+    hour: "20"
+    job: "/usr/sbin/shutdown -r now"
+    cron_file: xray
+    user: root
+    state: present
+    disabled: false
+
 - name: Stop Xray services
   ansible.builtin.command:
     cmd: docker compose -f {{ xray_compose_file }} down --remove-orphans
