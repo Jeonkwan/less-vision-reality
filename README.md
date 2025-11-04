@@ -79,25 +79,27 @@ The **Deploy Xray Stack** workflow (`.github/workflows/deploy.yml`) applies the 
 
    Secrets are masked automatically during the run, and the workflow adds explicit `::add-mask::` directives to ensure short IDs and keys never leak into logs.
 
-2. Define the following GitHub environment variables so the workflow can build a runtime inventory without editing the committed `ansible/inventory.yml` file:
+2. Provide the remote host connection details when you start the workflow:
 
-   | Environment variable | Purpose | Default |
-   | -------------------- | ------- | ------- |
-   | `REMOTE_SERVER_IP_ADDRESS` | Primary connection address for the target host | *(required)* |
-   | `REMOTE_SERVER_USER` | SSH user used to run the playbook | *(required)* |
-   | `REMOTE_SERVER_PORT` | SSH port for the host | `22` |
+   | Input / variable | Purpose | Default |
+   | ---------------- | ------- | ------- |
+   | `remote_server_ip_address` (workflow input) | Primary connection address for the target host | *(required)* |
+   | `remote_server_user` (workflow input or `REMOTE_SERVER_USER` environment variable) | SSH user used to run the playbook | *(optional)* |
+   | `REMOTE_SERVER_PORT` (environment variable) | SSH port for the host | `22` |
 
-   The workflow falls back to `ansible/inventory.yml` when either required variable is omitted, so you can still test against committed inventories locally.
+   The IP address must be supplied as a workflow input. When the SSH user input is left blank the workflow falls back to the GitHub environment variable of the same name; if both are missing it reuses `ansible/inventory.yml` instead of generating an inline inventory file.
 
-3. (Optional) Define a repository or environment variable named `XRAY_DECOY_SNI` when you want to force a specific fallback SNI. If the variable is blank or missing, the playbook falls back to its internal decoy list.
+3. (Optional) Override the Reality credentials per run by populating the `xray_uuid`, `xray_short_ids`, `xray_private_key`, and `xray_public_key` workflow inputs. Blank inputs automatically fall back to the environment secrets configured in step 1.
 
-4. Navigate to **Actions → Deploy Xray Stack** and choose **Run workflow**. Select the GitHub environment from the required input dropdown and, if necessary, provide an Ansible `limit` pattern to scope the run to a subset of hosts.
+4. (Optional) Define a repository or environment variable named `XRAY_DECOY_SNI` when you want to force a specific fallback SNI. If the variable is blank or missing, the playbook falls back to its internal decoy list.
 
-5. The workflow validates that the requested environment exists before proceeding, installs Ansible, masks all secrets, configures SSH if a key is present, and then calls `ansible-playbook` with the runtime inventory path (either the generated file or the repository default). Any failures surface directly in the job log.
+5. Navigate to **Actions → Deploy Xray Stack** and choose **Run workflow**. Select the GitHub environment from the required input dropdown and, if necessary, provide an Ansible `limit` pattern to scope the run to a subset of hosts.
 
-6. Before templating new configuration the playbook force-removes any existing Xray container to avoid collisions with stale Compose runs, waits 30 seconds for the replacement to stabilize, and captures the last 100 log lines if Docker reports a restart loop.
+6. The workflow validates that the requested environment exists before proceeding, installs Ansible, masks all secrets, configures SSH if a key is present, and then calls `ansible-playbook` with the runtime inventory path (either the generated file or the repository default). Any failures surface directly in the job log.
 
-7. On successful runs the workflow prints ready-to-use client connection details—including VLESS URIs, QR codes, and a Clash configuration snippet—so operators can distribute credentials without shelling into the remote host. Provide `XRAY_SNI` (or an inventory `xray_domain` override) to ensure the summary reflects the production domain instead of the placeholder.
+7. Before templating new configuration the playbook force-removes any existing Xray container to avoid collisions with stale Compose runs, waits 30 seconds for the replacement to stabilize, and captures the last 100 log lines if Docker reports a restart loop.
+
+8. On successful runs the workflow prints ready-to-use client connection details—including VLESS URIs, QR codes, and a Clash configuration snippet—so operators can distribute credentials without shelling into the remote host. Provide `XRAY_SNI` (or an inventory `xray_domain` override) to ensure the summary reflects the production domain instead of the placeholder.
 
 ## Repository Structure
 - `ansible/` – Playbooks, inventory, variable definitions, and templates for the Xray deployment.
