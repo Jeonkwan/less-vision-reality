@@ -8,6 +8,41 @@ on:
           GitHub environment that contains the deployment secrets.
         required: true
         type: environment
+      remote_server_ip_address:
+        description: >-
+          IP address or hostname of the remote server to deploy.
+        required: true
+        type: string
+      remote_server_user:
+        description: >-
+          Optional SSH user used to connect to the remote server.
+        required: false
+        default: ""
+        type: string
+      xray_uuid:
+        description: >-
+          Optional UUID used when rendering client configuration details.
+        required: false
+        default: ""
+        type: string
+      xray_short_ids:
+        description: >-
+          Optional comma-separated list of Reality short IDs.
+        required: false
+        default: ""
+        type: string
+      xray_private_key:
+        description: >-
+          Optional Reality private key for overriding the environment secret.
+        required: false
+        default: ""
+        type: string
+      xray_public_key:
+        description: >-
+          Optional Reality public key for overriding the environment secret.
+        required: false
+        default: ""
+        type: string
       limit:
         description: >-
           Optional Ansible limit pattern (host or group) to scope the deployment.
@@ -20,6 +55,41 @@ on:
           GitHub environment that contains the deployment secrets.
         required: true
         type: string
+      remote_server_ip_address:
+        description: >-
+          IP address or hostname of the remote server to deploy.
+        required: true
+        type: string
+      remote_server_user:
+        description: >-
+          Optional SSH user used to connect to the remote server.
+        required: false
+        type: string
+        default: ""
+      xray_uuid:
+        description: >-
+          Optional UUID used when rendering client configuration details.
+        required: false
+        type: string
+        default: ""
+      xray_short_ids:
+        description: >-
+          Optional comma-separated list of Reality short IDs.
+        required: false
+        type: string
+        default: ""
+      xray_private_key:
+        description: >-
+          Optional Reality private key for overriding the environment secret.
+        required: false
+        type: string
+        default: ""
+      xray_public_key:
+        description: >-
+          Optional Reality public key for overriding the environment secret.
+        required: false
+        type: string
+        default: ""
       limit:
         description: >-
           Optional Ansible limit pattern (host or group) to scope the deployment.
@@ -84,15 +154,15 @@ jobs:
     environment: ${{ needs.validate-environment.outputs.environment }}
     env:
       ANSIBLE_HOST_KEY_CHECKING: "false"
-      XRAY_UUID: ${{ secrets.XRAY_UUID }}
-      XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
-      XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
-      XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+      XRAY_UUID: ${{ inputs.xray_uuid || github.event.inputs.xray_uuid || secrets.XRAY_UUID }}
+      XRAY_SHORT_IDS: ${{ inputs.xray_short_ids || github.event.inputs.xray_short_ids || secrets.XRAY_SHORT_IDS }}
+      XRAY_PRIVATE_KEY: ${{ inputs.xray_private_key || github.event.inputs.xray_private_key || secrets.XRAY_PRIVATE_KEY }}
+      XRAY_PUBLIC_KEY: ${{ inputs.xray_public_key || github.event.inputs.xray_public_key || secrets.XRAY_PUBLIC_KEY }}
       XRAY_SNI: ${{ secrets.XRAY_SNI != '' && secrets.XRAY_SNI || vars.XRAY_DECOY_SNI != '' && vars.XRAY_DECOY_SNI || '' }}
       HOST_SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
       HOST_SSH_PUBLIC_KEY: ${{ secrets.HOST_SSH_PUBLIC_KEY }}
-      REMOTE_SERVER_IP_ADDRESS: ${{ vars.REMOTE_SERVER_IP_ADDRESS }}
-      REMOTE_SERVER_USER: ${{ vars.REMOTE_SERVER_USER }}
+      REMOTE_SERVER_IP_ADDRESS: ${{ inputs.remote_server_ip_address || github.event.inputs.remote_server_ip_address }}
+      REMOTE_SERVER_USER: ${{ inputs.remote_server_user || github.event.inputs.remote_server_user || vars.REMOTE_SERVER_USER }}
       REMOTE_SERVER_PORT: ${{ vars.REMOTE_SERVER_PORT }}
       ANSIBLE_INVENTORY_PATH: ansible/inventory.yml
     steps:
@@ -159,6 +229,11 @@ jobs:
           HOST_IP="${REMOTE_SERVER_IP_ADDRESS:-}"
           HOST_USER="${REMOTE_SERVER_USER:-}"
           HOST_PORT="${REMOTE_SERVER_PORT:-}"
+
+          if [ -z "$HOST_IP" ]; then
+            echo "::error::REMOTE_SERVER_IP_ADDRESS input is required."
+            exit 1
+          fi
 
           if [ -n "$HOST_IP" ] && [ -n "$HOST_USER" ]; then
             INLINE_INVENTORY="$RUNNER_TEMP/inline-xray-inventory.ini"

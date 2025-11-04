@@ -63,14 +63,14 @@ The deployment workflow (`.github/workflows/deploy.yml`) provides a turnkey path
 
 You can also define a non-secret repository or environment variable named `XRAY_DECOY_SNI` to force a specific fallback SNI. When both `XRAY_SNI` and `XRAY_DECOY_SNI` are absent or empty, the deployment defaults the TLS Server Name Indication to `web.wechat.com`.
 
-The workflow reads host connection details from the following GitHub environment variables when they are present, allowing you to manage server metadata without modifying the committed inventory:
+The workflow collects host connection details from a mix of workflow inputs and environment variables so you can manage server metadata without editing the committed inventory:
 
-| Environment variable | Purpose | Default |
-| -------------------- | ------- | ------- |
-| `REMOTE_SERVER_IP_ADDRESS` | Primary connection address for the target host | *(required)* |
-| `REMOTE_SERVER_USER` | SSH user used by Ansible | *(required)* |
-| `REMOTE_SERVER_PORT` | SSH port for the host | `22` |
+| Input / variable | Purpose | Default |
+| ---------------- | ------- | ------- |
+| `remote_server_ip_address` (workflow input) | Primary connection address for the target host | *(required)* |
+| `remote_server_user` (workflow input or `REMOTE_SERVER_USER` environment variable) | SSH user used by Ansible | *(optional)* |
+| `REMOTE_SERVER_PORT` (environment variable) | SSH port for the host | `22` |
 
-Manual runs require the operator to pick the GitHub environment from the workflow input before any secrets are loaded; a validation job confirms the environment exists via the GitHub API. You can optionally provide an Ansible limit pattern to target a subset of hosts during the same run.
+Reality credentials can also be overridden per run via the `xray_uuid`, `xray_short_ids`, `xray_private_key`, and `xray_public_key` workflow inputs; blanks fall back to the GitHub environment secrets. Manual runs require the operator to pick the GitHub environment from the workflow input before any secrets are loaded, and a validation job confirms the environment exists via the GitHub API. You can optionally provide an Ansible limit pattern to target a subset of hosts during the same run.
 
 Successful workflow runs now surface client connection guidance directly in the logs. The final step prints VLESS URIs for Shadowrocket and Clash Meta, a Clash Verge YAML snippet, and ANSI QR codes so you can onboard devices without logging into the target host. Provide the intended domain via `XRAY_SNI` (or define `xray_domain` on the host in `inventory.yml`) to override the default TLS decoy of `web.wechat.com`; when it is omitted, the workflow still uses your configured remote server IP (when available) as the connection endpoint.
