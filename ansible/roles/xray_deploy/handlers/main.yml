@@ -4,6 +4,9 @@
     cmd: docker compose -f {{ xray_compose_file }} up -d --remove-orphans
     chdir: "{{ xray_service_root }}"
   register: xray_deploy_compose_up
+  retries: 3
+  delay: 10
+  until: xray_deploy_compose_up.rc == 0
   changed_when: >-
     ('Creating' in xray_deploy_compose_up.stdout) or
     ('Creating' in xray_deploy_compose_up.stderr) or
