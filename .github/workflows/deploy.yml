@@ -1,4 +1,5 @@
 name: Deploy Xray Stack
+run-name: "Deploy Xray Stack to ${{ inputs.remote_server_ip_address || github.event.inputs.remote_server_ip_address }}"
 
 on:
   workflow_dispatch:
