@@ -1,107 +1,211 @@
-name: Diagnose proxy connectivity
-run-name: "Read-only proxy diagnostics (${{ inputs.environment }})"
-
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: GitHub environment holding existing Xray and SSH secrets
-        required: true
-        default: flatwhite
-        type: environment
-      ssh_user:
-        description: SSH username (blank uses environment variable or ubuntu)
-        required: false
-        default: ''
-        type: string
-
+name: Validate new Cream bounded-log feature
+run-name: 'Cream feature validation: ${{ inputs.stage }}'
 permissions:
   contents: read
-
 concurrency:
-  group: proxy-diagnostics-${{ inputs.environment }}
+  group: cream-feature-validation-${{ inputs.stage }}
   cancel-in-progress: false
-
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: ${{ inputs.environment }}
+    timeout-minutes: 35
+    environment: flatwhite
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install pinned sing-box client
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          curl --fail --silent --show-error --location --max-time 90 \
-            https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz \
-            --output sing-box.tar.gz
-          echo '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e  sing-box.tar.gz' | sha256sum --check
-          tar -xzf sing-box.tar.gz
-          echo "$RUNNER_TEMP/sing-box-1.11.4-linux-amd64" >> "$GITHUB_PATH"
-      - name: Inspect hosts over SSH without changing services
-        continue-on-error: true
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
-          SSH_USER_INPUT: ${{ inputs.ssh_user }}
-          SSH_USER_DEFAULT: ${{ vars.REMOTE_SERVER_USER }}
-          SSH_PORT_DEFAULT: ${{ vars.REMOTE_SERVER_PORT }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "$SSH_PRIVATE_KEY" ]; then
-            echo 'HOST_SSH_PRIVATE_KEY is not configured in the selected environment.'
-            exit 1
-          fi
-          key_dir=$(mktemp -d "$RUNNER_TEMP/proxy-ssh.XXXXXX")
-          trap 'rm -rf "$key_dir"' EXIT
-          chmod 700 "$key_dir"
-          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_dir/key"
-          chmod 600 "$key_dir/key"
-          ssh_user="${SSH_USER_INPUT:-${SSH_USER_DEFAULT:-ubuntu}}"
-          ssh_port="${SSH_PORT_DEFAULT:-22}"
-          for node in cream decaf; do
-            host="$node.mokamaker.site"
-            echo "::group::$node read-only host diagnostics"
-            # First-use host-key discovery, followed by mandatory host-key checking.
-            if ssh-keyscan -T 8 -p "$ssh_port" "$host" > "$key_dir/known_hosts" 2>/dev/null; then
-              timeout 100 ssh -i "$key_dir/key" -p "$ssh_port" \
-                -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 \
-                -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$key_dir/known_hosts" \
-                "$ssh_user@$host" 'bash -s' < scripts/diagnostics/host-readonly.sh || \
-                echo "SSH diagnostics failed for $node; client checks will still run."
-            else
-              echo "SSH port unreachable or host-key discovery failed for $node."
-            fi
-            echo '::endgroup::'
-          done
-      - name: Test authenticated REALITY connections from outside China
-        env:
-          XRAY_UUID: ${{ secrets.XRAY_UUID }}
-          XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
-          XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for value in "$XRAY_UUID" "$XRAY_PUBLIC_KEY" "$XRAY_SHORT_IDS"; do
-            if [ -z "$value" ]; then
-              echo 'Required Xray secret is missing in selected environment.'
-              exit 1
-            fi
-            echo "::add-mask::$value"
-          done
-          python scripts/diagnostics/check-proxies.py | tee "$RUNNER_TEMP/client-diagnostics.txt"
-      - name: Publish client diagnostic summary
-        if: always()
-        shell: bash
-        run: |
-          if [ -f "$RUNNER_TEMP/client-diagnostics.txt" ]; then
-            printf '### Read-only client diagnostics\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
-            cat "$RUNNER_TEMP/client-diagnostics.txt" >> "$GITHUB_STEP_SUMMARY"
-            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
-          fi
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install pinned sing-box client
+      shell: bash
+      run: "set -euo pipefail\ncd \"$RUNNER_TEMP\"\ncurl --fail --silent --show-error\
+        \ --location --max-time 90 \\\n  https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz\
+        \ \\\n  --output sing-box.tar.gz\necho '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e\
+        \  sing-box.tar.gz' | sha256sum --check\ntar -xzf sing-box.tar.gz\necho \"\
+        $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
+      if: ${{ inputs.stage != 'prepare' }}
+    - name: Establish SSH only to guarded new Cream
+      shell: bash
+      run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 13.250.199.129 ]\npython3 - <<'CHECK'\n\
+        import socket,os\nassert {x[4][0] for x in socket.getaddrinfo('cream.mokamaker.site',22,type=socket.SOCK_STREAM)}=={os.environ['EXPECTED_IP']}\n\
+        CHECK\nkey_dir=$(mktemp -d \"$RUNNER_TEMP/cream-ssh.XXXXXX\")\nchmod 700 \"\
+        $key_dir\"\nprintf '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\nchmod\
+        \ 600 \"$key_dir/key\"\nfor attempt in $(seq 1 12); do\n if ssh-keyscan -T\
+        \ 5 cream.mokamaker.site > \"$key_dir/known_hosts\" 2>/dev/null; then break;\
+        \ fi\n sleep 10\ndone\n[ -s \"$key_dir/known_hosts\" ]\necho \"KEY_DIR=$key_dir\"\
+        \ >> \"$GITHUB_ENV\"\n"
+    - name: Install latest Ubuntu AWS kernel and verify OS boot
+      if: ${{ inputs.stage == 'prepare' }}
+      shell: bash
+      run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
+        \ -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
+        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\ntimeout 1000 \"${SSH[@]}\"\
+        \ 'bash -s' < scripts/validation/prepare-cream.sh\nold_boot=$(timeout 20 \"\
+        ${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\n\"${SSH[@]}\" \"sudo -n\
+        \ shutdown -r +1 'Cream current-kernel validation'\"\nsleep 70\nrecovered=false\n\
+        for attempt in $(seq 1 40); do\n new_boot=$(timeout 20 \"${SSH[@]}\" 'cat\
+        \ /proc/sys/kernel/random/boot_id' 2>/dev/null || true)\n if [ -n \"$new_boot\"\
+        \ ] && [ \"$new_boot\" != \"$old_boot\" ]; then\n  if timeout 30 \"${SSH[@]}\"\
+        \ 'test \"$(uname -r)\" = \"$(cat /var/lib/proxy-validation/expected-kernel)\"\
+        \ && uname -r'; then\n   recovered=true\n   echo \"Cream reboot confirmed\
+        \ with current repository kernel; boot ID $new_boot\"\n   break\n  fi\n fi\n\
+        \ echo \"Waiting for Cream boot recovery, attempt $attempt\"\n sleep 10\n\
+        done\n[ \"$recovered\" = true ]\n"
+    - name: Validate authenticated Cream and control clients
+      if: ${{ inputs.stage != 'prepare' }}
+      run: 'set -euo pipefail
+
+        python scripts/diagnostics/check-proxies.py --nodes cream flatwhite decaf
+        --expected-cream-ip "$EXPECTED_IP" | tee "$RUNNER_TEMP/client-diagnostics.txt"'
+      shell: bash
+    - name: Inspect effective host and container maintenance settings
+      if: ${{ inputs.stage != 'prepare' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@cream.mokamaker.site)
+
+        timeout 100 "${SSH[@]}" ''bash -s'' < scripts/validation/validate-host.sh
+
+        '
+    - name: Verify real log rotation using disposable container
+      if: ${{ inputs.stage == 'validate' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@cream.mokamaker.site)
+
+        timeout 240 "${SSH[@]}" ''bash -s'' < scripts/validation/test-log-rotation.sh
+
+        '
+    - name: Install Ansible for unchanged redeployment
+      if: ${{ inputs.stage == 'validate' }}
+      run: python -m pip install "ansible-core~=2.19.0"
+    - name: Verify unchanged deployment preserves Xray container
+      if: ${{ inputs.stage == 'validate' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@cream.mokamaker.site)
+
+        before=$(timeout 20 "${SSH[@]}" "sudo -n docker inspect --format ''{{.Id}}
+        {{.State.StartedAt}}'' xray")
+
+        export ANSIBLE_HOST_KEY_CHECKING=True
+
+        export ANSIBLE_SSH_COMMON_ARGS="-o IdentitiesOnly=yes -o UserKnownHostsFile=$KEY_DIR/known_hosts"
+
+        printf ''[xray_servers]\ncream.mokamaker.site\n'' > "$KEY_DIR/inventory"
+
+        ansible-playbook -i "$KEY_DIR/inventory" -u ubuntu --private-key "$KEY_DIR/key"
+        ansible/site.yml
+
+        after=$(timeout 20 "${SSH[@]}" "sudo -n docker inspect --format ''{{.Id}}
+        {{.State.StartedAt}}'' xray")
+
+        [ "$before" = "$after" ]
+
+        echo "Unchanged deployment preserved container and StartedAt: $after"
+
+        '
+    - name: Verify current-kernel OS reboot and proxy recovery
+      if: ${{ inputs.stage == 'reboot' }}
+      shell: bash
+      run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
+        \ -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
+        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\nold_boot=$(timeout 20\
+        \ \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\n\"${SSH[@]}\" \"sudo\
+        \ -n shutdown -r +1 'Cream current-kernel validation'\"\nsleep 70\nrecovered=false\n\
+        for attempt in $(seq 1 40); do\n new_boot=$(timeout 20 \"${SSH[@]}\" 'cat\
+        \ /proc/sys/kernel/random/boot_id' 2>/dev/null || true)\n if [ -n \"$new_boot\"\
+        \ ] && [ \"$new_boot\" != \"$old_boot\" ]; then\n  if timeout 30 \"${SSH[@]}\"\
+        \ 'test \"$(uname -r)\" = \"$(cat /var/lib/proxy-validation/expected-kernel)\"\
+        \ && uname -r'; then\n   recovered=true\n   echo \"Cream reboot confirmed\
+        \ with current repository kernel; boot ID $new_boot\"\n   break\n  fi\n fi\n\
+        \ echo \"Waiting for Cream boot recovery, attempt $attempt\"\n sleep 10\n\
+        done\n[ \"$recovered\" = true ]\ntimeout 100 \"${SSH[@]}\" 'bash -s' < scripts/validation/validate-host.sh\n"
+    - name: Validate authenticated Cream and control clients
+      if: ${{ inputs.stage != 'prepare' }}
+      run: 'set -euo pipefail
+
+        python scripts/diagnostics/check-proxies.py --nodes cream flatwhite decaf
+        --expected-cream-ip "$EXPECTED_IP" | tee "$RUNNER_TEMP/client-diagnostics.txt"'
+      shell: bash
+    - name: Remove runner SSH credentials
+      if: always()
+      shell: bash
+      run: if [ -n "${KEY_DIR:-}" ]; then rm -rf "$KEY_DIR"; fi
+    if: ${{ inputs.stage != 'monitor' }}
+    env:
+      XRAY_UUID: ${{ secrets.XRAY_UUID }}
+      XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+      XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
+      XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
+      EXPECTED_IP: ${{ inputs.expected_ip }}
+      SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+  monitor1:
+    uses: ./.github/workflows/cream-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '1'
+    secrets: inherit
+    if: ${{ inputs.stage == 'monitor' }}
+  monitor2:
+    uses: ./.github/workflows/cream-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '2'
+    secrets: inherit
+    needs: monitor1
+  monitor3:
+    uses: ./.github/workflows/cream-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '3'
+    secrets: inherit
+    needs: monitor2
+  monitor4:
+    uses: ./.github/workflows/cream-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '4'
+    secrets: inherit
+    needs: monitor3
+  monitor5:
+    uses: ./.github/workflows/cream-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '5'
+    secrets: inherit
+    needs: monitor4
+  monitor6:
+    uses: ./.github/workflows/cream-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '6'
+    secrets: inherit
+    needs: monitor5
+'on':
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Test stage
+        required: true
+        type: choice
+        default: validate
+        options:
+        - prepare
+        - validate
+        - reboot
+        - monitor
+      expected_ip:
+        description: Guarded new Cream static IP
+        required: true
+        type: string
+        default: 13.250.199.129

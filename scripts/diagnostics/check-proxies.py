@@ -21,10 +21,23 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=pathlib.Path)
     parser.add_argument('--sing-box', default='sing-box')
+    parser.add_argument('--nodes', nargs='+', choices=('cream', 'flatwhite', 'decaf'), default=['cream', 'decaf'])
+    parser.add_argument('--expected-flatwhite-ip')
+    parser.add_argument('--expected-cream-ip')
     args = parser.parse_args()
+    if args.expected_cream_ip:
+        resolved = {x[4][0] for x in socket.getaddrinfo('cream.mokamaker.site', 443, type=socket.SOCK_STREAM)}
+        if resolved != {args.expected_cream_ip}:
+            raise SystemExit('Cream DNS does not match the guarded test instance')
+        print('Cream DNS matches test instance:', True, flush=True)
+    if args.expected_flatwhite_ip:
+        resolved = {x[4][0] for x in socket.getaddrinfo('flatwhite.mokamaker.site', 443, type=socket.SOCK_STREAM)}
+        print('Flat White DNS matches new instance:', resolved == {args.expected_flatwhite_ip}, flush=True)
+        if resolved != {args.expected_flatwhite_ip}:
+            raise SystemExit('Flat White DNS has not resolved to the verified new instance')
     if args.config:
         original = json.loads(args.config.read_text())
-        outbounds = {o['tag']: o for o in original['outbounds'] if o.get('tag') in ('cream', 'decaf')}
+        outbounds = {o['tag']: o for o in original['outbounds'] if o.get('tag') in args.nodes}
     else:
         uuid = os.environ['XRAY_UUID']
         public = os.environ['XRAY_PUBLIC_KEY']
@@ -35,7 +48,7 @@ def main():
                    'tls': {'enabled': True, 'server_name': 'web.wechat.com',
                            'utls': {'enabled': True, 'fingerprint': 'chrome'},
                            'reality': {'enabled': True, 'public_key': public, 'short_id': sid}}}
-            for name in ('cream', 'decaf')
+            for name in args.nodes
         }
         # Compare without logging credentials.
         print('Deployment public key matches supplied clients:', public == 'c8UlOfsM1xr3sXJB51xsZkVfsmQf4iGYwb9TRvZZ038')
@@ -44,8 +57,10 @@ def main():
     binary = shutil.which(args.sing_box)
     if not binary:
         raise SystemExit('sing-box executable not found')
+    if not args.config and not (public == 'c8UlOfsM1xr3sXJB51xsZkVfsmQf4iGYwb9TRvZZ038' and sid == 'f2a5aebaa3acb89d' and hashlib.sha256(uuid.encode()).hexdigest()[:12] == '6318c1ff6c69'):
+        raise SystemExit('Deployment credentials do not match the supplied clients')
     failed = False
-    for name in ('cream', 'decaf'):
+    for name in args.nodes:
         outbound = copy.deepcopy(outbounds[name])
         host = outbound['server']
         port = outbound['server_port']

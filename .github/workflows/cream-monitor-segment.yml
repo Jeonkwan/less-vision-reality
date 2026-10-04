@@ -1,0 +1,62 @@
+name: Cream four-hour monitor segment
+'on':
+  workflow_call:
+    inputs:
+      expected_ip:
+        required: true
+        type: string
+      segment:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 250
+    environment: flatwhite
+    env:
+      XRAY_UUID: ${{ secrets.XRAY_UUID }}
+      XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+      XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
+      XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
+      EXPECTED_IP: ${{ inputs.expected_ip }}
+      SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+      SEGMENT: ${{ inputs.segment }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install pinned sing-box client
+      shell: bash
+      run: "set -euo pipefail\ncd \"$RUNNER_TEMP\"\ncurl --fail --silent --show-error\
+        \ --location --max-time 90 \\\n  https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz\
+        \ \\\n  --output sing-box.tar.gz\necho '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e\
+        \  sing-box.tar.gz' | sha256sum --check\ntar -xzf sing-box.tar.gz\necho \"\
+        $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
+    - name: Establish SSH only to guarded new Cream
+      shell: bash
+      run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 13.250.199.129 ]\npython3 - <<'CHECK'\n\
+        import socket,os\nassert {x[4][0] for x in socket.getaddrinfo('cream.mokamaker.site',22,type=socket.SOCK_STREAM)}=={os.environ['EXPECTED_IP']}\n\
+        CHECK\nkey_dir=$(mktemp -d \"$RUNNER_TEMP/cream-ssh.XXXXXX\")\nchmod 700 \"\
+        $key_dir\"\nprintf '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\nchmod\
+        \ 600 \"$key_dir/key\"\nfor attempt in $(seq 1 12); do\n if ssh-keyscan -T\
+        \ 5 cream.mokamaker.site > \"$key_dir/known_hosts\" 2>/dev/null; then break;\
+        \ fi\n sleep 10\ndone\n[ -s \"$key_dir/known_hosts\" ]\necho \"KEY_DIR=$key_dir\"\
+        \ >> \"$GITHUB_ENV\"\n"
+    - name: Monitor authenticated client and host every 30 minutes for four hours
+      shell: bash
+      run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
+        \ -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
+        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\nstart=$SECONDS\nfor sample\
+        \ in $(seq 0 8); do\n target=$((start+sample*1800))\n delay=$((target-SECONDS))\n\
+        \ if [ \"$delay\" -gt 0 ]; then sleep \"$delay\"; fi\n echo \"Segment $SEGMENT\
+        \ sample $sample at $(date -u +%FT%TZ)\"\n python scripts/diagnostics/check-proxies.py\
+        \ --nodes cream --expected-cream-ip \"$EXPECTED_IP\"\n timeout 100 \"${SSH[@]}\"\
+        \ 'bash -s' < scripts/validation/validate-host.sh\ndone\n"
+    - name: Remove runner SSH credentials
+      if: always()
+      shell: bash
+      run: if [ -n "${KEY_DIR:-}" ]; then rm -rf "$KEY_DIR"; fi

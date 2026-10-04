@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+uname -r
+free -h
+df -h /
+sudo -n systemctl is-active docker systemd-journald
+sudo -n python3 - <<'CHECK'
+import pathlib,re,subprocess,json
+expected=pathlib.Path('/var/lib/proxy-validation/expected-kernel').read_text().strip()
+assert subprocess.check_output(['uname','-r'],text=True).strip()==expected
+assert not pathlib.Path('/etc/default/grub.d/99-proxy-kernel.cfg').exists()
+for root in ('/etc/cron.d','/var/spool/cron/crontabs'):
+ p=pathlib.Path(root)
+ if p.exists():
+  for f in p.iterdir():
+   if f.is_file():
+    for line in f.read_text(errors='replace').splitlines():
+     if line.strip() and not line.lstrip().startswith('#'):
+      assert not re.search(r'\b(?:reboot|shutdown)\b',line), (f.name,line)
+print('No scheduled reboot/shutdown cron commands')
+text=subprocess.check_output(['systemd-analyze','cat-config','systemd/journald.conf'],text=True)
+effective={}
+for line in text.splitlines():
+ if line.strip() and not line.lstrip().startswith('#') and '=' in line:
+  k,v=line.split('=',1);effective[k.strip()]=v.strip()
+assert effective.get('SystemMaxUse')=='100M',effective
+assert effective.get('RuntimeMaxUse')=='32M',effective
+print('Effective journal caps:',{k:effective[k] for k in ('SystemMaxUse','RuntimeMaxUse')})
+config=json.loads(subprocess.check_output(['docker','inspect','--format={{json .HostConfig.LogConfig}}','xray'],text=True))
+assert config['Type']=='json-file' and config['Config']=={'max-size':'10m','max-file':'3'},config
+print('Effective Xray log policy:',config)
+state=json.loads(subprocess.check_output(['docker','inspect','--format={{json .State}}','xray'],text=True))
+assert state['Running'] and not state['OOMKilled'],state
+print('Xray running; no OOM kill')
+errors=subprocess.check_output(['journalctl','-k','-b','--no-pager','--grep=Out of memory|oom-kill'],text=True)
+assert 'kernel:' not in errors, 'Boot-time kernel OOM detected'
+CHECK
+sudo -n journalctl --disk-usage
+sudo -n systemctl list-timers --all --no-pager
