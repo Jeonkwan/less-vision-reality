@@ -1,5 +1,5 @@
-name: Inspect Flat White reboot failure
-run-name: Flat White bounded startup diagnostics
+name: Stabilize Flat White after reboot failure
+run-name: Flat White disable failed reboot schedule and validate proxy
 permissions:
   contents: read
 concurrency:
@@ -23,8 +23,7 @@ jobs:
         \ \\\n  --output sing-box.tar.gz\necho '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e\
         \  sing-box.tar.gz' | sha256sum --check\ntar -xzf sing-box.tar.gz\necho \"\
         $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
-    - name: Inspect hosts over SSH without changing services
-      continue-on-error: true
+    - name: Inspect boot history and disable failed daily OS reboot
       env:
         SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
         SSH_USER_INPUT: ${{ inputs.ssh_user }}
@@ -36,14 +35,14 @@ jobs:
         \ -d \"$RUNNER_TEMP/proxy-ssh.XXXXXX\")\ntrap 'rm -rf \"$key_dir\"' EXIT\n\
         chmod 700 \"$key_dir\"\nprintf '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\
         \nchmod 600 \"$key_dir/key\"\nssh_user=\"${SSH_USER_INPUT:-${SSH_USER_DEFAULT:-ubuntu}}\"\
-        \nssh_port=\"${SSH_PORT_DEFAULT:-22}\"\nfor attempt in $(seq 1 25); do\n echo\
-        \ \"Flat White SSH diagnostic attempt $attempt\"\n if ssh-keyscan -T 5 -p\
-        \ \"$ssh_port\" flatwhite.mokamaker.site > \"$key_dir/known_hosts\" 2>/dev/null;\
-        \ then\n   if timeout 100 ssh -i \"$key_dir/key\" -p \"$ssh_port\" -o BatchMode=yes\
-        \ -o IdentitiesOnly=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o\
-        \ UserKnownHostsFile=\"$key_dir/known_hosts\" \"$ssh_user@flatwhite.mokamaker.site\"\
-        \ 'bash -s' < scripts/diagnostics/fast-host-readonly.sh; then\n     break\n\
-        \   fi\n fi\n sleep 15\ndone\n"
+        \nssh_port=\"${SSH_PORT_DEFAULT:-22}\"\nrecovered=false\nfor attempt in $(seq\
+        \ 1 3); do\n echo \"Flat White SSH diagnostic attempt $attempt\"\n if ssh-keyscan\
+        \ -T 5 -p \"$ssh_port\" flatwhite.mokamaker.site > \"$key_dir/known_hosts\"\
+        \ 2>/dev/null; then\n   if timeout 100 ssh -i \"$key_dir/key\" -p \"$ssh_port\"\
+        \ -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes\
+        \ -o UserKnownHostsFile=\"$key_dir/known_hosts\" \"$ssh_user@flatwhite.mokamaker.site\"\
+        \ 'bash -s' < scripts/diagnostics/fast-host-readonly.sh; then\n     recovered=true\n\
+        \     break\n   fi\n fi\n sleep 15\ndone\n[ \"$recovered\" = true ]\n"
     - name: Test authenticated REALITY connections from outside China
       env:
         XRAY_UUID: ${{ secrets.XRAY_UUID }}
