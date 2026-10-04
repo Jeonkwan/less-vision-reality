@@ -59,7 +59,7 @@ jobs:
       shell: bash
       run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
         \ -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
-        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\ntimeout 1000 \"${SSH[@]}\"\
+        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\ntimeout 1800 \"${SSH[@]}\"\
         \ 'bash -s' < scripts/validation/prepare-cream.sh\nold_boot=$(timeout 20 \"\
         ${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\n\"${SSH[@]}\" \"sudo -n\
         \ shutdown -r +1 'Cream current-kernel validation'\"\nsleep 70\nrecovered=false\n\
