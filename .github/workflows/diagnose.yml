@@ -1,5 +1,5 @@
-name: Validate Flat White survives cron-style reboot
-run-name: Flat White authenticated validation before and after reboot
+name: Use Decaf kernel on Flat White and verify boot
+run-name: Flat White kernel rollback and authenticated reboot validation
 permissions:
   contents: read
 concurrency:
@@ -8,7 +8,7 @@ concurrency:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment: ${{ inputs.environment }}
     steps:
     - uses: actions/checkout@v4
@@ -60,7 +60,7 @@ jobs:
         ::add-mask::$value\"\ndone\npython scripts/diagnostics/check-proxies.py --nodes\
         \ flatwhite decaf --expected-flatwhite-ip \"$EXPECTED_IP\" | tee \"$RUNNER_TEMP/client-diagnostics.txt\"\
         \n"
-    - name: Consolidate Flat White reboot schedule and test OS-driven reboot
+    - name: Install official Decaf kernel and validate OS reboot
       env:
         SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
         SSH_USER_DEFAULT: ${{ vars.REMOTE_SERVER_USER }}
@@ -75,18 +75,21 @@ jobs:
         \ > \"$key_dir/known_hosts\" 2>/dev/null\nSSH=(ssh -i \"$key_dir/key\" -p\
         \ \"$ssh_port\" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5\
         \ -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"$key_dir/known_hosts\"\
-        \ \"$ssh_user@flatwhite.mokamaker.site\")\ntimeout 180 \"${SSH[@]}\" 'bash\
-        \ -s' < scripts/diagnostics/flatwhite-reboot-schedule.sh\nold_boot=$(timeout\
-        \ 20 \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\n\"${SSH[@]}\" \"\
-        sudo -n shutdown -r +1 'Flat White proxy startup validation'\"\nsleep 70\n\
-        recovered=false\nfor attempt in $(seq 1 40); do\n  new_boot=$(timeout 20 \"\
-        ${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null || true)\n \
-        \ if [ -n \"$new_boot\" ] && [ \"$new_boot\" != \"$old_boot\" ]; then\n  \
-        \  if python3 - <<'PORTCHECK'\nimport socket\nwith socket.create_connection(('flatwhite.mokamaker.site',443),timeout=3):pass\n\
+        \ \"$ssh_user@flatwhite.mokamaker.site\")\ntimeout 600 \"${SSH[@]}\" 'bash\
+        \ -s' < scripts/diagnostics/fix-flatwhite-kernel.sh\nold_boot=$(timeout 20\
+        \ \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\n\"${SSH[@]}\" \"sudo\
+        \ -n shutdown -r +1 'Flat White proxy startup validation'\"\nsleep 70\nrecovered=false\n\
+        for attempt in $(seq 1 40); do\n  new_boot=$(timeout 20 \"${SSH[@]}\" 'cat\
+        \ /proc/sys/kernel/random/boot_id' 2>/dev/null || true)\n  if [ -n \"$new_boot\"\
+        \ ] && [ \"$new_boot\" != \"$old_boot\" ]; then\n    if python3 - <<'PORTCHECK'\n\
+        import socket\nwith socket.create_connection(('flatwhite.mokamaker.site',443),timeout=3):pass\n\
         PORTCHECK\n    then\n      echo \"Flat White reboot confirmed; new boot ID\
         \ $new_boot; proxy port responding.\"\n      recovered=true\n      break\n\
         \    fi\n  fi\n  echo \"Waiting for Flat White SSH and proxy recovery, attempt\
-        \ $attempt\"\n  sleep 10\ndone\n[ \"$recovered\" = true ]\n"
+        \ $attempt\"\n  sleep 10\ndone\n[ \"$recovered\" = true ]\ntimeout 30 \"${SSH[@]}\"\
+        \ 'test \"$(uname -r)\" = 6.17.0-1019-aws && uname -r && free -h && sudo -n\
+        \ systemctl is-active docker && ! sudo -n journalctl -k -b --no-pager --grep=\"\
+        Out of memory|oom-kill\" | grep -q \"kernel:\"'\n"
     - name: Validate authenticated Flat White connections after reboot
       env:
         XRAY_UUID: ${{ secrets.XRAY_UUID }}
