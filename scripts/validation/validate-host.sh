@@ -9,6 +9,14 @@ import pathlib,re,subprocess,json
 expected=pathlib.Path('/var/lib/proxy-validation/expected-kernel').read_text().strip()
 assert subprocess.check_output(['uname','-r'],text=True).strip()==expected
 assert not pathlib.Path('/etc/default/grub.d/99-proxy-kernel.cfg').exists()
+assert 'kho=off' in pathlib.Path('/proc/cmdline').read_text().split(), 'KHO recovery boot flag absent'
+audit=subprocess.check_output(['dpkg','--audit'],text=True)
+assert not audit.strip(),audit
+policy=subprocess.check_output(['apt-cache','policy','linux-image-aws'],text=True)
+print(policy)
+assert re.search(r'Installed: (\S+)',policy).group(1)==re.search(r'Candidate: (\S+)',policy).group(1)
+assert not any('linux' in x for x in subprocess.check_output(['apt-mark','showhold'],text=True).splitlines()), 'Kernel package hold present'
+print('Kernel package set consistent; no kernel hold')
 for root in ('/etc/cron.d','/var/spool/cron/crontabs'):
  p=pathlib.Path(root)
  if p.exists():
