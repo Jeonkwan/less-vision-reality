@@ -32,8 +32,16 @@ print('Effective Xray log policy:',config)
 state=json.loads(subprocess.check_output(['docker','inspect','--format={{json .State}}','xray'],text=True))
 assert state['Running'] and not state['OOMKilled'],state
 print('Xray running; no OOM kill')
-errors=subprocess.check_output(['journalctl','-k','-b','--no-pager','--grep=Out of memory|oom-kill'],text=True)
-assert 'kernel:' not in errors, 'Boot-time kernel OOM detected'
+result=subprocess.run(['journalctl','-k','-b','--no-pager','--grep=Out of memory|oom-kill'],text=True,capture_output=True)
+assert result.returncode in (0,1),result.stderr
+assert 'kernel:' not in result.stdout, 'Boot-time kernel OOM detected'
+print('No kernel OOM entries this boot')
+logpath=pathlib.Path(subprocess.check_output(['docker','inspect','--format={{.LogPath}}','xray'],text=True).strip())
+logfiles=[logpath]+list(logpath.parent.glob(logpath.name+'.*'))
+sizes=[f.stat().st_size for f in logfiles]
+assert len(sizes)<=3 and sum(sizes)<=30*1024*1024+3*65536,sizes
+print('Actual Xray retained log bytes:',sum(sizes))
+assert __import__('shutil').disk_usage('/').used/__import__('shutil').disk_usage('/').total<0.90,'Root filesystem above 90 percent usage'
 CHECK
 sudo -n journalctl --disk-usage
 sudo -n systemctl list-timers --all --no-pager

@@ -54,12 +54,18 @@ jobs:
       shell: bash
       run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
         \ -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
-        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\nstart=$SECONDS\nfor sample\
-        \ in $(seq 0 8); do\n target=$((start+sample*1800))\n delay=$((target-SECONDS))\n\
-        \ if [ \"$delay\" -gt 0 ]; then sleep \"$delay\"; fi\n echo \"Segment $SEGMENT\
-        \ sample $sample at $(date -u +%FT%TZ)\"\n python scripts/diagnostics/check-proxies.py\
-        \ --nodes cream --expected-cream-ip \"$EXPECTED_IP\"\n timeout 100 \"${SSH[@]}\"\
-        \ 'bash -s' < scripts/validation/validate-host.sh\ndone\n"
+        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\nboot=$(timeout 20 \"\
+        ${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\ncontainer=$(timeout 20\
+        \ \"${SSH[@]}\" \"sudo -n docker inspect --format '{{.Id}} {{.State.StartedAt}}\
+        \ {{.RestartCount}}' xray\")\nstart=$SECONDS\nfor sample in $(seq 0 8); do\n\
+        \ target=$((start+sample*1800))\n delay=$((target-SECONDS))\n if [ \"$delay\"\
+        \ -gt 0 ]; then sleep \"$delay\"; fi\n echo \"Segment $SEGMENT sample $sample\
+        \ at $(date -u +%FT%TZ)\"\n python scripts/diagnostics/check-proxies.py --nodes\
+        \ cream --expected-cream-ip \"$EXPECTED_IP\"\n timeout 100 \"${SSH[@]}\" 'bash\
+        \ -s' < scripts/validation/validate-host.sh\n [ \"$boot\" = \"$(timeout 20\
+        \ \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\" ]\n [ \"$container\"\
+        \ = \"$(timeout 20 \"${SSH[@]}\" \"sudo -n docker inspect --format '{{.Id}}\
+        \ {{.State.StartedAt}} {{.RestartCount}}' xray\")\" ]\ndone\n"
     - name: Remove runner SSH credentials
       if: always()
       shell: bash
