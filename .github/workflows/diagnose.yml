@@ -24,7 +24,7 @@ jobs:
         \  sing-box.tar.gz' | sha256sum --check\ntar -xzf sing-box.tar.gz\necho \"\
         $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
       if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' && inputs.stage
-        != 'recover-memory' }}
+        != 'recover-memory' && inputs.stage != 'repair-packages' }}
     - name: Establish SSH only to guarded new Cream
       shell: bash
       run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 13.250.199.129 ]\npython3 - <<'CHECK'\n\
@@ -56,6 +56,18 @@ jobs:
         2>/dev/null || true''
 
         '
+    - name: Repair kernel meta-package dependencies on guarded Cream
+      if: ${{ inputs.stage == 'repair-packages' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@cream.mokamaker.site)
+
+        timeout 900 "${SSH[@]}" ''bash -s'' < scripts/validation/repair-packages.sh
+
+        '
     - name: Install latest Ubuntu AWS kernel and verify OS boot
       if: ${{ inputs.stage == 'prepare' || inputs.stage == 'recover-memory' }}
       shell: bash
@@ -71,12 +83,12 @@ jobs:
         \ if [ -n \"$new_boot\" ] && [ \"$new_boot\" != \"$old_boot\" ]; then\n  if\
         \ timeout 30 \"${SSH[@]}\" 'test \"$(uname -r)\" = \"$(cat /var/lib/proxy-validation/expected-kernel)\"\
         \ && uname -r'; then\n   recovered=true\n   echo \"Cream reboot confirmed\
-        \ with current repository kernel; boot ID $new_boot\"\n   break\n  fi\n fi\n\
-        \ echo \"Waiting for Cream boot recovery, attempt $attempt\"\n sleep 10\n\
-        done\n[ \"$recovered\" = true ]\n"
+        \ with expected kernel; boot ID $new_boot\"\n   break\n  fi\n fi\n echo \"\
+        Waiting for Cream boot recovery, attempt $attempt\"\n sleep 10\ndone\n[ \"\
+        $recovered\" = true ]\n"
     - name: Validate authenticated Cream and control clients
       if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' && inputs.stage
-        != 'recover-memory' }}
+        != 'recover-memory' && inputs.stage != 'repair-packages' }}
       run: 'set -euo pipefail
 
         python scripts/diagnostics/check-proxies.py --nodes cream flatwhite decaf
@@ -84,7 +96,7 @@ jobs:
       shell: bash
     - name: Inspect effective host and container maintenance settings
       if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' && inputs.stage
-        != 'recover-memory' }}
+        != 'recover-memory' && inputs.stage != 'repair-packages' }}
       shell: bash
       run: 'set -euo pipefail
 
@@ -152,12 +164,12 @@ jobs:
         \ ] && [ \"$new_boot\" != \"$old_boot\" ]; then\n  if timeout 30 \"${SSH[@]}\"\
         \ 'test \"$(uname -r)\" = \"$(cat /var/lib/proxy-validation/expected-kernel)\"\
         \ && uname -r'; then\n   recovered=true\n   echo \"Cream reboot confirmed\
-        \ with current repository kernel; boot ID $new_boot\"\n   break\n  fi\n fi\n\
-        \ echo \"Waiting for Cream boot recovery, attempt $attempt\"\n sleep 10\n\
-        done\n[ \"$recovered\" = true ]\ntimeout 100 \"${SSH[@]}\" 'bash -s' < scripts/validation/validate-host.sh\n"
+        \ with expected kernel; boot ID $new_boot\"\n   break\n  fi\n fi\n echo \"\
+        Waiting for Cream boot recovery, attempt $attempt\"\n sleep 10\ndone\n[ \"\
+        $recovered\" = true ]\ntimeout 100 \"${SSH[@]}\" 'bash -s' < scripts/validation/validate-host.sh\n"
     - name: Validate authenticated Cream and control clients
       if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' && inputs.stage
-        != 'recover-memory' }}
+        != 'recover-memory' && inputs.stage != 'repair-packages' }}
       run: 'set -euo pipefail
 
         python scripts/diagnostics/check-proxies.py --nodes cream flatwhite decaf
@@ -233,6 +245,7 @@ jobs:
         - monitor
         - inspect
         - recover-memory
+        - repair-packages
       expected_ip:
         description: Guarded new Cream static IP
         required: true
