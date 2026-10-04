@@ -30,10 +30,14 @@ jobs:
         import socket,os\nassert {x[4][0] for x in socket.getaddrinfo('cream.mokamaker.site',22,type=socket.SOCK_STREAM)}=={os.environ['EXPECTED_IP']}\n\
         CHECK\nkey_dir=$(mktemp -d \"$RUNNER_TEMP/cream-ssh.XXXXXX\")\nchmod 700 \"\
         $key_dir\"\nprintf '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\nchmod\
-        \ 600 \"$key_dir/key\"\nfor attempt in $(seq 1 12); do\n if ssh-keyscan -T\
-        \ 5 cream.mokamaker.site > \"$key_dir/known_hosts\" 2>/dev/null; then break;\
-        \ fi\n sleep 10\ndone\n[ -s \"$key_dir/known_hosts\" ]\necho \"KEY_DIR=$key_dir\"\
-        \ >> \"$GITHUB_ENV\"\n"
+        \ 600 \"$key_dir/key\"\necho \"KEY_DIR=$key_dir\" >> \"$GITHUB_ENV\"\nconnected=false\n\
+        for attempt in $(seq 1 12); do\n if timeout 35 ssh -i \"$key_dir/key\" -o\
+        \ BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new\
+        \ -o UserKnownHostsFile=\"$key_dir/known_hosts\" ubuntu@cream.mokamaker.site\
+        \ 'uname -r'; then\n  connected=true\n  break\n fi\n echo \"SSH connection\
+        \ attempt $attempt failed\"\n sleep 10\ndone\n[ \"$connected\" = true ]\n\
+        [ -s \"$key_dir/known_hosts\" ]\necho \"KEY_DIR=$key_dir\" >> \"$GITHUB_ENV\"\
+        \n"
     - name: Install latest Ubuntu AWS kernel and verify OS boot
       if: ${{ inputs.stage == 'prepare' }}
       shell: bash
