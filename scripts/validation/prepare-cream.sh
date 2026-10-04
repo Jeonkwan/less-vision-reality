@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
-sudo -n timeout 600 cloud-init status --wait
+sudo -n cloud-init status
 uname -r
-sudo -n timeout 240 apt-get -o DPkg::Lock::Timeout=120 update
-sudo -n timeout 600 env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install --no-install-recommends -y linux-image-aws
+free -h
+sudo -n dpkg-query -W -f='${Package} ${Status}
+' kmod linux-base microcode-initrd
+work=$(mktemp -d /tmp/cream-kernel.XXXXXX)
+trap 'rm -rf "$work"' EXIT
+cd "$work"
+curl --fail --show-error --location --retry 3 --max-time 180 'https://archive.ubuntu.com/ubuntu/pool/main/l/linux-aws-7.0/linux-modules-7.0.0-1014-aws_7.0.0-1014.14~24.04.1_amd64.deb' --output kernel-0.deb
+echo '918e98bed5dae1ab40bfb3bc91e9456c1321435533165a9d7023ac60301c1e88  kernel-0.deb' | sha256sum --check
+curl --fail --show-error --location --retry 3 --max-time 180 'https://archive.ubuntu.com/ubuntu/pool/main/l/linux-signed-aws-7.0/linux-image-7.0.0-1014-aws_7.0.0-1014.14~24.04.1_amd64.deb' --output kernel-1.deb
+echo 'bb4e1aae90d41945b100459233ee440c3494e019467f9a2e60ec931f988cf00b  kernel-1.deb' | sha256sum --check
+curl --fail --show-error --location --retry 3 --max-time 180 'https://archive.ubuntu.com/ubuntu/pool/main/l/linux-meta-aws-7.0/linux-image-aws_7.0.0-1014.14~24.04.1_amd64.deb' --output kernel-2.deb
+echo '6e2b2a0bee8ee3e4bbd9d47c771126373080336e791bb2544e31560f4cf2ab61  kernel-2.deb' | sha256sum --check
+sudo -n timeout 600 env DEBIAN_FRONTEND=noninteractive DPKG_DEB_THREADS_MAX=1 dpkg -i kernel-0.deb kernel-1.deb kernel-2.deb
 sudo -n mkdir -p /var/lib/proxy-validation
-sudo -n python3 - <<'KERNEL'
-import pathlib,re,subprocess
-text=subprocess.check_output(['apt-cache','policy','linux-image-aws'],text=True)
-print(text)
-installed=re.search(r'Installed: (\S+)',text).group(1)
-candidate=re.search(r'Candidate: (\S+)',text).group(1)
-assert installed==candidate,(installed,candidate)
-deps=subprocess.check_output(['dpkg-query','-W','-f=${Depends}','linux-image-aws'],text=True)
-kernel=re.search(r'linux-image-(\d[^ ,(]+)',deps).group(1)
-assert pathlib.Path('/boot/vmlinuz-'+kernel).exists(),kernel
-assert not pathlib.Path('/etc/default/grub.d/99-proxy-kernel.cfg').exists(), 'Old kernel workaround must not be present'
-pathlib.Path('/var/lib/proxy-validation/expected-kernel').write_text(kernel+'\n')
-print('Current repository kernel selected for test:',kernel)
-KERNEL
+sudo -n sh -c 'test -f /boot/vmlinuz-7.0.0-1014-aws && test ! -f /etc/default/grub.d/99-proxy-kernel.cfg && printf "%s\n" 7.0.0-1014-aws > /var/lib/proxy-validation/expected-kernel'
+sudo -n dpkg-query -W linux-image-aws linux-image-7.0.0-1014-aws linux-modules-7.0.0-1014-aws
