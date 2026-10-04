@@ -47,8 +47,9 @@ jobs:
         -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
         ubuntu@cream.mokamaker.site)
 
-        timeout 100 "${SSH[@]}" ''uname -r; uptime; free -h; df -h /; cat /proc/meminfo;
-        ps -eo pid,comm,rss,pcpu --sort=-rss | head -20; sudo -n systemctl is-active
+        timeout 100 "${SSH[@]}" ''uname -r; cat /proc/cmdline; sudo -n grep -E "^CONFIG_(CMA|KEXEC_HANDOVER|KEXEC_FILE|KEXEC_JUMP)"
+        /boot/config-$(uname -r); uptime; free -h; df -h /; cat /proc/meminfo; ps
+        -eo pid,comm,rss,pcpu --sort=-rss | head -20; sudo -n systemctl is-active
         cloud-final; sudo -n journalctl -k -b --no-pager --grep="Out of memory|oom-kill|CMA"
         | tail -65; sudo -n cat /var/lib/cloud/data/status.json; cat /var/lib/proxy-validation/expected-kernel
         2>/dev/null || true''
