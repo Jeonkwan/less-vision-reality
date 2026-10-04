@@ -6,6 +6,7 @@ df -h /
 sudo -n systemctl is-active docker systemd-journald
 sudo -n python3 - <<'CHECK'
 import pathlib,re,subprocess,json
+print('Boot ID:',pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip())
 expected=pathlib.Path('/var/lib/proxy-validation/expected-kernel').read_text().strip()
 assert subprocess.check_output(['uname','-r'],text=True).strip()==expected
 assert not pathlib.Path('/etc/default/grub.d/99-proxy-kernel.cfg').exists()

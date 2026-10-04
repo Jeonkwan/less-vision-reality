@@ -246,6 +246,7 @@ jobs:
         - inspect
         - recover-memory
         - repair-packages
+        - check
       expected_ip:
         description: Guarded new Cream static IP
         required: true
