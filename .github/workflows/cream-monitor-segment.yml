@@ -50,6 +50,23 @@ jobs:
         \ attempt $attempt failed\"\n sleep 10\ndone\n[ \"$connected\" = true ]\n\
         [ -s \"$key_dir/known_hosts\" ]\necho \"KEY_DIR=$key_dir\" >> \"$GITHUB_ENV\"\
         \n"
+    - name: Initial authenticated proxy and host health check
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@cream.mokamaker.site)
+
+        python scripts/diagnostics/check-proxies.py --nodes cream --expected-cream-ip
+        "$EXPECTED_IP"
+
+        timeout 100 "${SSH[@]}" ''bash -s'' < scripts/validation/validate-host.sh
+
+        printf ''Segment %s initial authenticated client and host checks passed at
+        %s\n'' "$SEGMENT" "$(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"
+
+        '
     - name: Monitor authenticated client and host every 30 minutes for four hours
       shell: bash
       run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
@@ -57,7 +74,7 @@ jobs:
         $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\nboot=$(timeout 20 \"\
         ${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\ncontainer=$(timeout 20\
         \ \"${SSH[@]}\" \"sudo -n docker inspect --format '{{.Id}} {{.State.StartedAt}}\
-        \ {{.RestartCount}}' xray\")\nstart=$SECONDS\nfor sample in $(seq 0 8); do\n\
+        \ {{.RestartCount}}' xray\")\nstart=$SECONDS\nfor sample in $(seq 1 8); do\n\
         \ target=$((start+sample*1800))\n delay=$((target-SECONDS))\n if [ \"$delay\"\
         \ -gt 0 ]; then sleep \"$delay\"; fi\n echo \"Segment $SEGMENT sample $sample\
         \ at $(date -u +%FT%TZ)\"\n python scripts/diagnostics/check-proxies.py --nodes\
