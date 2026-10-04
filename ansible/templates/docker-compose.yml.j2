@@ -3,6 +3,11 @@ services:
     image: "{{ xray_container_image }}"
     container_name: "{{ xray_service_name }}"
     restart: "{{ xray_restart_policy }}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "{{ xray_host_port }}:{{ xray_container_port }}"
     volumes:

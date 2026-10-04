@@ -74,3 +74,13 @@ The workflow collects host connection details from a mix of workflow inputs and 
 Reality credentials can also be overridden per run via the `xray_uuid`, `xray_short_ids`, `xray_private_key`, and `xray_public_key` workflow inputs; blanks fall back to the GitHub environment secrets. Manual runs require the operator to pick the GitHub environment from the workflow input before any secrets are loaded, and a validation job confirms the environment exists via the GitHub API. You can optionally provide an Ansible limit pattern to target a subset of hosts during the same run.
 
 Successful workflow runs now surface client connection guidance directly in the logs. The final step prints VLESS URIs for Shadowrocket and Clash Meta, a Clash Verge YAML snippet, and ANSI QR codes so you can onboard devices without logging into the target host. Provide the intended domain via `XRAY_SNI` (or define `xray_domain` on the host in `inventory.yml`) to override the default TLS decoy of `web.wechat.com`; when it is omitted, the workflow still uses your configured remote server IP (when available) as the connection endpoint.
+# Log retention and maintenance
+
+Xray container stdout/stderr uses Docker's `json-file` driver with 10 MB files
+and at most three files. The logging policy is applied when Compose creates or
+recreates the container; restarting an existing container does not change it.
+
+Normal deployment uses Compose to reconcile the managed service, without the
+broad legacy cleanup role. An unchanged deployment preserves a healthy running
+container. The playbook does not schedule routine host reboots. Existing hosts'
+previously installed cron jobs are outside this fresh-instance change.
