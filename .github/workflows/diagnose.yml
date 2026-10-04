@@ -1,5 +1,5 @@
-name: Validate Flat White after proxy deployment
-run-name: Flat White client validation at ${{ inputs.expected_ip }}
+name: Inspect Flat White reboot failure
+run-name: Flat White bounded startup diagnostics
 permissions:
   contents: read
 concurrency:
@@ -8,7 +8,7 @@ concurrency:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 6
     environment: ${{ inputs.environment }}
     steps:
     - uses: actions/checkout@v4
@@ -36,14 +36,14 @@ jobs:
         \ -d \"$RUNNER_TEMP/proxy-ssh.XXXXXX\")\ntrap 'rm -rf \"$key_dir\"' EXIT\n\
         chmod 700 \"$key_dir\"\nprintf '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\
         \nchmod 600 \"$key_dir/key\"\nssh_user=\"${SSH_USER_INPUT:-${SSH_USER_DEFAULT:-ubuntu}}\"\
-        \nssh_port=\"${SSH_PORT_DEFAULT:-22}\"\nfor node in flatwhite decaf; do\n\
-        \  host=\"$node.mokamaker.site\"\n  echo \"::group::$node read-only host diagnostics\"\
+        \nssh_port=\"${SSH_PORT_DEFAULT:-22}\"\nfor node in flatwhite; do\n  host=\"\
+        $node.mokamaker.site\"\n  echo \"::group::$node read-only host diagnostics\"\
         \n  # First-use host-key discovery, followed by mandatory host-key checking.\n\
         \  if ssh-keyscan -T 8 -p \"$ssh_port\" \"$host\" > \"$key_dir/known_hosts\"\
         \ 2>/dev/null; then\n    timeout 100 ssh -i \"$key_dir/key\" -p \"$ssh_port\"\
         \ \\\n      -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 \\\
         \n      -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"$key_dir/known_hosts\"\
-        \ \\\n      \"$ssh_user@$host\" 'bash -s' < scripts/diagnostics/host-readonly.sh\
+        \ \\\n      \"$ssh_user@$host\" 'bash -s' < scripts/diagnostics/fast-host-readonly.sh\
         \ || \\\n      echo \"SSH diagnostics failed for $node; client checks will\
         \ still run.\"\n  else\n    echo \"SSH port unreachable or host-key discovery\
         \ failed for $node.\"\n  fi\n  echo '::endgroup::'\ndone\n"
