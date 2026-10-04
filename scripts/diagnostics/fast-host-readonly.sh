@@ -9,18 +9,8 @@ for command in 'sudo -n journalctl --list-boots --no-pager' 'last -x -n 22' "sud
  echo "=== $command"
  timeout 8 bash -c "$command" || true
 done
-sudo -n python3 - <<'DISABLE'
-from pathlib import Path
-p=Path('/etc/cron.d/daily-reboot');text=p.read_text();jobs=[l.strip() for l in text.splitlines() if l.strip() and not l.lstrip().startswith('#')]
-assert jobs==['0 21 * * * root /sbin/shutdown -r now'],jobs
-backup=Path('/etc/proxy-maintenance');backup.mkdir(mode=0o700,exist_ok=True)
-(backup/'daily-reboot.before-disable').write_text(text)
-p.write_text('# Daily OS reboot disabled after failed Flat White recovery test on 2026-10-04.\n# Original schedule: 0 21 * * * root /sbin/shutdown -r now\n')
-p.chmod(0o644)
-for f in Path('/etc/cron.d').iterdir():
- if f.is_file():
-  for line in f.read_text(errors='replace').splitlines():
-   if line.strip() and not line.lstrip().startswith('#') and ('shutdown' in line or 'reboot' in line):
-    raise SystemExit('Unexpected active reboot job: '+f.name+' '+line)
-print('No active reboot entries in /etc/cron.d; original schedule backed up outside cron directory.')
-DISABLE
+
+for command in 'cat /proc/cmdline' "cat /proc/meminfo | head -12; cat /proc/meminfo | tail -15" "sudo -n journalctl -k -b -1 --no-pager | head -80" "sudo -n journalctl -k -b -1 --no-pager --grep='cma|CMA|reserved|Memory:' -n 25" 'apt-cache policy linux-image-6.17.0-1019-aws linux-image-6.17.0-1018-aws linux-image-6.8.0-1046-aws' 'cat /etc/default/grub; ls /etc/default/grub.d'; do
+ echo "=== $command"
+ timeout 8 bash -c "$command" || true
+done
