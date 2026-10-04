@@ -13,6 +13,15 @@ sudo -n ss -lntp '( sport = :443 )' || true
 sudo -n docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || true
 sudo -n docker inspect xray --format '{{json .State}}' || true
 sudo -n docker inspect xray --format 'RestartCount={{.RestartCount}} Image={{.Config.Image}} RestartPolicy={{.HostConfig.RestartPolicy.Name}}' || true
+sudo -n python3 - <<'PY'
+import re,subprocess
+r=subprocess.run(['docker','logs','--since','48h','--tail','80','xray'],capture_output=True,text=True,timeout=15)
+print('Recent Xray logs (bounded, UUID/key fields redacted):')
+text=r.stdout+r.stderr
+text=re.sub(r'(?i)\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b','[UUID redacted]',text)
+text=re.sub(r'(?i)("(?:privateKey|publicKey|shortIds)"\s*:\s*)("[^"]*"|\[[^\]]*\])',r'\1"[redacted]"',text)
+print(text)
+PY
 sudo -n journalctl -k --since '48 hours ago' --no-pager --grep='Out of memory|oom-kill|Killed process' -n 30 || true
 sudo -n journalctl -u docker --since '48 hours ago' --no-pager -n 30 || true
 sudo -n ufw status || true
