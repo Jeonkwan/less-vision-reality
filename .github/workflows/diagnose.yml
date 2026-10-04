@@ -23,7 +23,8 @@ jobs:
         \ \\\n  --output sing-box.tar.gz\necho '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e\
         \  sing-box.tar.gz' | sha256sum --check\ntar -xzf sing-box.tar.gz\necho \"\
         $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
-      if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' }}
+      if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' && inputs.stage
+        != 'recover-memory' }}
     - name: Establish SSH only to guarded new Cream
       shell: bash
       run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 13.250.199.129 ]\npython3 - <<'CHECK'\n\
@@ -56,31 +57,34 @@ jobs:
 
         '
     - name: Install latest Ubuntu AWS kernel and verify OS boot
-      if: ${{ inputs.stage == 'prepare' }}
+      if: ${{ inputs.stage == 'prepare' || inputs.stage == 'recover-memory' }}
       shell: bash
       run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
         \ -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
-        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\ntimeout 1800 \"${SSH[@]}\"\
-        \ 'bash -s' < scripts/validation/prepare-cream.sh\nold_boot=$(timeout 20 \"\
-        ${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\n\"${SSH[@]}\" \"sudo -n\
-        \ shutdown -r +1 'Cream current-kernel validation'\"\nsleep 70\nrecovered=false\n\
-        for attempt in $(seq 1 40); do\n new_boot=$(timeout 20 \"${SSH[@]}\" 'cat\
-        \ /proc/sys/kernel/random/boot_id' 2>/dev/null || true)\n if [ -n \"$new_boot\"\
-        \ ] && [ \"$new_boot\" != \"$old_boot\" ]; then\n  if timeout 30 \"${SSH[@]}\"\
-        \ 'test \"$(uname -r)\" = \"$(cat /var/lib/proxy-validation/expected-kernel)\"\
+        $KEY_DIR/known_hosts\" ubuntu@cream.mokamaker.site)\nif [ \"$STAGE\" = recover-memory\
+        \ ]; then\n timeout 180 \"${SSH[@]}\" 'bash -s' < scripts/validation/recover-memory.sh\n\
+        else\n timeout 1800 \"${SSH[@]}\" 'bash -s' < scripts/validation/prepare-cream.sh\n\
+        fi\nold_boot=$(timeout 20 \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\n\
+        \"${SSH[@]}\" \"sudo -n shutdown -r +1 'Cream current-kernel validation'\"\
+        \nsleep 70\nrecovered=false\nfor attempt in $(seq 1 40); do\n new_boot=$(timeout\
+        \ 20 \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null || true)\n\
+        \ if [ -n \"$new_boot\" ] && [ \"$new_boot\" != \"$old_boot\" ]; then\n  if\
+        \ timeout 30 \"${SSH[@]}\" 'test \"$(uname -r)\" = \"$(cat /var/lib/proxy-validation/expected-kernel)\"\
         \ && uname -r'; then\n   recovered=true\n   echo \"Cream reboot confirmed\
         \ with current repository kernel; boot ID $new_boot\"\n   break\n  fi\n fi\n\
         \ echo \"Waiting for Cream boot recovery, attempt $attempt\"\n sleep 10\n\
         done\n[ \"$recovered\" = true ]\n"
     - name: Validate authenticated Cream and control clients
-      if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' }}
+      if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' && inputs.stage
+        != 'recover-memory' }}
       run: 'set -euo pipefail
 
         python scripts/diagnostics/check-proxies.py --nodes cream flatwhite decaf
         --expected-cream-ip "$EXPECTED_IP" | tee "$RUNNER_TEMP/client-diagnostics.txt"'
       shell: bash
     - name: Inspect effective host and container maintenance settings
-      if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' }}
+      if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' && inputs.stage
+        != 'recover-memory' }}
       shell: bash
       run: 'set -euo pipefail
 
@@ -152,7 +156,8 @@ jobs:
         \ echo \"Waiting for Cream boot recovery, attempt $attempt\"\n sleep 10\n\
         done\n[ \"$recovered\" = true ]\ntimeout 100 \"${SSH[@]}\" 'bash -s' < scripts/validation/validate-host.sh\n"
     - name: Validate authenticated Cream and control clients
-      if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' }}
+      if: ${{ inputs.stage != 'prepare' && inputs.stage != 'inspect' && inputs.stage
+        != 'recover-memory' }}
       run: 'set -euo pipefail
 
         python scripts/diagnostics/check-proxies.py --nodes cream flatwhite decaf
@@ -170,6 +175,7 @@ jobs:
       XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
       EXPECTED_IP: ${{ inputs.expected_ip }}
       SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+      STAGE: ${{ inputs.stage }}
   monitor1:
     uses: ./.github/workflows/cream-monitor-segment.yml
     with:
@@ -226,6 +232,7 @@ jobs:
         - reboot
         - monitor
         - inspect
+        - recover-memory
       expected_ip:
         description: Guarded new Cream static IP
         required: true
