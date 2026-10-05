@@ -39,6 +39,7 @@ def main():
     assert str(ipaddress.IPv4Address(address)) == address
     assert hostname in [target+'.mokamaker.site', target+'.'+address+'.sslip.io']
     assert {item[4][0] for item in socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)} == {address}
+    resume = os.environ.get('SPARE_RESUME', 'false') == 'true'
     opposite = 'docker' if initial == 'native' else 'native'
 
     def stage(name, mode, minimal=False):
@@ -124,8 +125,8 @@ print(json.dumps(dict(container=container,network=network)))
         try:
             peers()
             stage('ready', initial)
-            deploy(initial)
-            stage('inspect', initial, minimal=initial=='native')
+            deploy(initial, switch=resume)
+            stage('inspect', initial, minimal=initial=='native' and not resume)
             negative_and_repeat(initial)
             stage('suite', initial)
             if initial == 'docker': create_fixture()

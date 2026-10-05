@@ -8,6 +8,10 @@ run-name: 'Runtime validation: ${{ inputs.stage }} ${{ inputs.target }} ${{ inpu
         options: [native, docker]
         default: native
         required: true
+      resume_spare:
+        type: boolean
+        default: false
+        description: Resume spare acceptance after a failed attempt; fresh native footprint evidence must already exist
       require_minimal_host:
         type: boolean
         default: false
@@ -61,6 +65,7 @@ jobs:
     timeout-minutes: 40
     env:
       SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+      SPARE_RESUME: ${{ inputs.resume_spare }}
       XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
       VALIDATION_HOSTNAME: ${{ inputs.validation_hostname }}
       XRAY_UUID: ${{ secrets.XRAY_UUID }}

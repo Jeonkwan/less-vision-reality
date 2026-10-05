@@ -28,3 +28,8 @@ must additionally prove Docker absent; switched native hosts retain inactive pac
 Status: preparation in progress; no successful live-validation claim yet. Evidence
 and exact resource cleanup results will be added after execution. Run commands and
 runtime limitations remain in [runtime contract](selectable-xray-runtime.md).
+
+If a failed attempt has already installed the other runtime, `resume_spare=true`
+allows re-selection on the same disposable host and skips the fresh-native Docker-absence
+assertion. Retain the earlier fresh-host inspection evidence; resumed success does
+not replace that proof. It still executes the complete runtime lifecycle/switch suite.
