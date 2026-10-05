@@ -9,7 +9,7 @@ def write_private_key(path,value):
 def main():
  target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf'];socket.inet_aton(address)
  if stage=='suite':
-  for part in ['inspect','logs','recovery','reboot','inspect']:
+  for part in ['inspect','logs','recovery','reboot','inspect','baseline']:
    subprocess.run(['python3',__file__],env={**os.environ,'STAGE':part},check=True)
   return
  with tempfile.TemporaryDirectory(prefix='native-ssh-') as tmp:
