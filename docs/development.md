@@ -96,9 +96,8 @@ git diff --check
 
 Dummy values are only for syntax checking. This command does not connect to hosts
 or apply configuration. The deployment workflow currently uses Python 3.11 and
-`ansible-core~=2.16`; the PR syntax workflow uses Python `3.x` and unpinned
-Ansible. The local Python 3.12 / Ansible 2.16.19 combination above is tested, but
-those workflows are not an exact reproducible dependency lock.
+`ansible-core==2.16.19`; the PR syntax workflow also uses Python 3.11 and Ansible 2.16.19. The local Python 3.12 / Ansible 2.16.19 combination above is tested, but
+both workflows pin the same Ansible core version.
 
 The selected deployment environment supplies `HOST_SSH_PRIVATE_KEY`, `XRAY_UUID`,
 `XRAY_SHORT_IDS`, `XRAY_PRIVATE_KEY`, `XRAY_PUBLIC_KEY`, and optionally SSH public

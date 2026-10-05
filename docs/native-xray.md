@@ -8,7 +8,7 @@ portable, but other architectures/distributions need separately reviewed artifac
 and host-policy support.
 
 `prepare-native.py` accepts only reviewed pinned releases (25.10.15 baseline,
-26.3.27 latest stable at review). Official archive SHA-256 is checked before extracting
+26.3.27 latest stable at review, now the validated default). Official archive SHA-256 is checked before extracting
 only the binary. No geodata, Docker, Compose, compiler or Python packages are
 installed on the VM. Configuration is validated with the candidate binary before
 activation. An unchanged deployment preserves the running process and host boot.

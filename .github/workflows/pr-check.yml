@@ -14,12 +14,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.11'
 
       - name: Install Ansible
         run: |
           python -m pip install --upgrade pip
-          pip install ansible-core
+          pip install ansible-core==2.16.19
 
       - name: Check native artifact integrity guards
         run: python scripts/tests/test_native.py

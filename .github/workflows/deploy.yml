@@ -48,7 +48,7 @@ on:
         description: Reviewed pinned native Xray release
         required: false
         type: string
-        default: "25.10.15"
+        default: "26.3.27"
       limit:
         description: >-
           Optional Ansible limit pattern (host or group) to scope the deployment.
@@ -100,7 +100,7 @@ on:
         description: Reviewed pinned native Xray release
         required: false
         type: string
-        default: "25.10.15"
+        default: "26.3.27"
       limit:
         description: >-
           Optional Ansible limit pattern (host or group) to scope the deployment.
@@ -164,7 +164,7 @@ jobs:
     needs: validate-environment
     environment: ${{ needs.validate-environment.outputs.environment }}
     env:
-      XRAY_VERSION: ${{ inputs.xray_version || '25.10.15' }}
+      XRAY_VERSION: ${{ inputs.xray_version || '26.3.27' }}
       ANSIBLE_HOST_KEY_CHECKING: "false"
       XRAY_UUID: ${{ inputs.xray_uuid || github.event.inputs.xray_uuid || secrets.XRAY_UUID }}
       XRAY_SHORT_IDS: ${{ inputs.xray_short_ids || github.event.inputs.xray_short_ids || secrets.XRAY_SHORT_IDS }}

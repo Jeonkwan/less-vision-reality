@@ -8,7 +8,7 @@ RELEASES={
 def verify(data,expected):
  if hashlib.sha256(data).hexdigest()!=expected:raise ValueError('Official archive SHA-256 mismatch')
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--version',choices=RELEASES,default='25.10.15');p.add_argument('--directory',type=pathlib.Path,required=True);p.add_argument('--github-env',type=pathlib.Path);a=p.parse_args()
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--version',choices=RELEASES,default='26.3.27');p.add_argument('--directory',type=pathlib.Path,required=True);p.add_argument('--github-env',type=pathlib.Path);a=p.parse_args()
  url=f'https://github.com/XTLS/Xray-core/releases/download/v{a.version}/Xray-linux-64.zip'
  with urllib.request.urlopen(url,timeout=90) as r:data=r.read()
  verify(data,RELEASES[a.version]);a.directory.mkdir(parents=True,exist_ok=True)
