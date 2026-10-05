@@ -1,5 +1,7 @@
 # Less Vision Reality Automation
 
+For agents and contributors: start with [development environment and dependencies](docs/development.md) and [AGENTS.md](AGENTS.md).
+
 This repository contains Ansible playbooks and supporting GitHub Actions workflows for deploying and operating an Xray Vision/Reality stack with Docker Compose. The automation draws inspiration from [`Jeonkwan/less-vision`](https://github.com/Jeonkwan/less-vision) and [`myelectronix/xtls-reality-docker`](https://github.com/myelectronix/xtls-reality-docker) while introducing templated inventories, idempotent handlers, and CI-driven credential tooling tailored to the requirements captured in [`specs.md`](specs.md).
 
 ## Documentation Suite
@@ -97,7 +99,7 @@ The **Deploy Xray Stack** workflow (`.github/workflows/deploy.yml`) applies the 
 
 6. The workflow validates that the requested environment exists before proceeding, installs Ansible, masks all secrets, configures SSH if a key is present, and then calls `ansible-playbook` with the runtime inventory path (either the generated file or the repository default). Any failures surface directly in the job log.
 
-7. Before templating new configuration the playbook force-removes any existing Xray container to avoid collisions with stale Compose runs, waits 30 seconds for the replacement to stabilize, and captures the last 100 log lines if Docker reports a restart loop.
+7. The playbook preserves an unchanged Xray container and reconciles configuration through Docker Compose. It waits 30 seconds to inspect health and captures the last 100 log lines on failure.
 
 8. On successful runs the workflow prints ready-to-use client connection details—including VLESS URIs, QR codes, and a Clash configuration snippet—so operators can distribute credentials without shelling into the remote host. Provide `XRAY_SNI` (or an inventory `xray_domain` override) to ensure the summary reflects the production domain instead of the placeholder.
 
