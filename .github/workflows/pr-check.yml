@@ -33,6 +33,9 @@ jobs:
       - name: Validate shared configuration with reviewed official binaries
         run: python scripts/tests/test_runtime_config.py
 
+      - name: Validate pinned Docker image config permissions
+        run: python scripts/tests/test_docker_config.py
+
       - name: Run Ansible syntax check
         env:
           XRAY_DEPLOYMENT_MODE: ${{ matrix.mode }}

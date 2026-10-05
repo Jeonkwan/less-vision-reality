@@ -14,7 +14,7 @@ never installs Ansible on the VM or schedules a reboot.
 | Version | `xray_binary_version=26.3.27`; reviewed `25.10.15` available | `xray_container_image_version=25.10.15` |
 | Actions version input | `xray_version=26.3.27` (native binary only) | `container_image_version=25.10.15` |
 | Runtime | verified official archive binary, dedicated unprivileged `xray` account | official `ghcr.io/xtls/xray-core:25.10.15`, Compose |
-| Config | `/usr/local/etc/xray/config.json`, root:xray 0640 | `/opt/xray/config/config.json`, root:root 0600 |
+| Config | `/usr/local/etc/xray/config.json`, root:xray 0640 | `/opt/xray/config/config.json`, root:65532 0640 |
 | Runtime files | `/usr/local/bin/xray`, `/etc/systemd/system/xray.service` | `/opt/xray/docker-compose.yml`; Compose project/service `xray` |
 | Logs | journald; no text logs/logrotate | json-file, 10 MB × three files |
 
@@ -99,6 +99,10 @@ ansible-playbook -i /path/to/inventory.yml ansible/site.yml --limit spare \
 ansible-playbook -i /path/to/inventory.yml ansible/site.yml --limit spare \
   -e xray_deployment_mode=native -e xray_binary_version=25.10.15
 ```
+
+The pinned Docker image runs as UID/GID 65532. Its bind-mounted config directory
+is root:65532 0750 and config/candidate files are root:65532 0640; no host account
+is installed for that numeric identity. Compose remains root-only.
 
 Docker validates the candidate in an isolated temporary container with no network
 or published ports, then validates Compose. Native validates the candidate binary

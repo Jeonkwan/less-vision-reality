@@ -122,3 +122,7 @@ Runner success does not establish connectivity from a China Unicom client.
 Read [disposable VM strategy](disposable-proxy-vms.md) before live tests.
 
 See [Americano/Latte validation and cleanup](selectable-runtime-validation.md) for the task scope and evidence.
+
+CI also runs `python3 scripts/tests/test_docker_config.py` with controller Docker.
+It tests the pinned image user and rejection/acceptance of restricted config permissions
+using generated in-memory keys and ephemeral containers without published ports.

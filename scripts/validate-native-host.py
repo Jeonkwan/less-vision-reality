@@ -41,7 +41,9 @@ else:
  assert any(m['Source']=='/opt/xray/config' and m['Destination']=='/usr/local/etc/xray' for m in data['Mounts'])
  assert data['HostConfig']['LogConfig']=={'Type':'json-file','Config':{'max-size':'10m','max-file':'3'}}
  assert data['HostConfig']['RestartPolicy']['Name']=='unless-stopped'
- assert pathlib.Path('/opt/xray/config/config.json').stat().st_mode & 0o777==0o600
+ docker_config=pathlib.Path('/opt/xray/config/config.json').stat()
+ assert docker_config.st_mode & 0o777==0o640 and docker_config.st_uid==0 and docker_config.st_gid==65532
+ assert data['Config']['User']=='65532'
  print('Container',data['Id'],'image digest',data['Image'])
 for unit in ['apt-daily.timer','apt-daily-upgrade.timer','apt-daily.service','apt-daily-upgrade.service']:
  r=subprocess.run(['systemctl','is-enabled',unit],text=True,capture_output=True);assert r.stdout.strip()=='masked'

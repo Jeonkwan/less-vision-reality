@@ -1,12 +1,19 @@
 ---
-- name: Create private Docker deployment directories
+- name: Create private Docker deployment root
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ xray_service_root }}"
     state: directory
     owner: root
     group: root
     mode: "0700"
-  loop: ["{{ xray_service_root }}", "{{ xray_config_path }}"]
+
+- name: Create configuration directory readable by pinned image group
+  ansible.builtin.file:
+    path: "{{ xray_config_path }}"
+    state: directory
+    owner: root
+    group: "65532"
+    mode: "0750"
 
 - name: Mark inspected Docker deployment ownership
   ansible.builtin.copy:
@@ -22,13 +29,20 @@
   register: xray_image_pull
   changed_when: "'Downloaded newer image' in xray_image_pull.stdout"
 
+- name: Verify pinned official image uses the reviewed unprivileged user
+  ansible.builtin.command:
+    argv: [docker, image, inspect, "{{ xray_container_image }}", "--format={{ '{{.Config.User}}' }}"]
+  register: xray_image_user
+  changed_when: false
+  failed_when: xray_image_user.stdout != '65532'
+
 - name: Render private Docker candidate configuration
   ansible.builtin.template:
     src: "{{ playbook_dir }}/templates/config.json.j2"
     dest: "{{ xray_service_root }}/config.candidate.json"
     owner: root
-    group: root
-    mode: "0600"
+    group: "65532"
+    mode: "0640"
   no_log: true
 
 - name: Validate Docker candidate without publishing ports
@@ -73,8 +87,8 @@
         src: "{{ xray_service_root }}/config.candidate.json"
         dest: "{{ xray_config_path }}/{{ xray_config_file }}"
         owner: root
-        group: root
-        mode: "0600"
+        group: "65532"
+        mode: "0640"
       no_log: true
       register: xray_docker_config
 
