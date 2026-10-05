@@ -2,10 +2,14 @@
 """Selected-host diagnostics and authenticated checks; no credentials in output."""
 import json,os,pathlib,socket,subprocess,tempfile,time
 
+def write_private_key(path,value):
+ path.write_text(value.strip()+'\n')
+ path.chmod(0o600)
+
 def main():
  target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf'];socket.inet_aton(address)
  with tempfile.TemporaryDirectory(prefix='native-ssh-') as tmp:
-  p=pathlib.Path(tmp);key=p/'key';key.write_text(os.environ['SSH_PRIVATE_KEY'].strip()+'\n');key.chmod(0o600)
+  p=pathlib.Path(tmp);key=p/'key';write_private_key(key,os.environ['SSH_PRIVATE_KEY'])
   ssh=['ssh','-i',str(key),'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','ConnectTimeout=10','-o','StrictHostKeyChecking=accept-new','-o','UserKnownHostsFile='+str(p/'known_hosts'),'ubuntu@'+address]
   def remote(cmd,check=True,timeout=100):
    r=subprocess.run(ssh+[cmd],capture_output=True,text=True,timeout=timeout)
