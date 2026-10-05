@@ -1,10 +1,55 @@
 ---
-- name: Deploy Xray container with Docker Compose
+- name: Deploy selected Xray runtime
   hosts: xray_servers
   become: true
   gather_facts: false
+  pre_tasks:
+    - name: Reject unsupported runtime before any host operation
+      ansible.builtin.assert:
+        that:
+          - xray_deployment_mode in ['native', 'docker']
+          - xray_binary_version in ['25.10.15', '26.3.27']
+          - xray_container_image_version in ['25.10.15', '26.3.27']
+          - xray_container_image == 'ghcr.io/xtls/xray-core:' ~ xray_container_image_version
+          - xray_service_name == 'xray'
+          - xray_config_file == 'config.json'
+          - xray_container_confdir == '/usr/local/etc/xray'
+          - xray_binary_path == '/usr/local/bin/xray'
+          - xray_service_root == '/opt/xray'
+          - xray_compose_file == '/opt/xray/docker-compose.yml'
+          - xray_compose_project == 'xray'
+          - xray_config_path == ('/usr/local/etc/xray' if xray_deployment_mode == 'native' else '/opt/xray/config')
+        fail_msg: Unsupported runtime, release or deployment paths.
+      tags: [always]
+
+    - name: Inspect managed runtimes without modifying the host
+      ansible.builtin.script: "{{ playbook_dir }}/../scripts/runtime-ownership.py"
+      args:
+        executable: python3
+      register: xray_runtime_probe
+      changed_when: false
+      tags: [always]
+
+    - name: Cache runtime ownership evidence
+      ansible.builtin.set_fact:
+        xray_existing: "{{ xray_runtime_probe.stdout | trim | from_json }}"
+      tags: [always]
+
+    - name: Require explicit opt-in before switching an existing runtime
+      ansible.builtin.assert:
+        that:
+          - >-
+            xray_allow_runtime_switch | bool or
+            not (xray_existing.docker_running if xray_deployment_mode == 'native' else (xray_existing.native_running or xray_existing.native_enabled))
+        fail_msg: Opposite runtime exists; use xray_allow_runtime_switch=true for a deliberate switch.
+      tags: [always]
 
   roles:
-    - xray_common
-    - xray_cleanup
-    - xray_deploy
+    - role: proxy_host_policy
+    - role: xray_common
+    - role: docker_prereqs
+      when: xray_deployment_mode == 'docker'
+    - role: xray_native
+      when: xray_deployment_mode == 'native'
+    - role: xray_deploy
+      when: xray_deployment_mode == 'docker'

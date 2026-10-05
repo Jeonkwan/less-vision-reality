@@ -6,6 +6,9 @@ on:
 jobs:
   ansible-syntax:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mode: [native, docker]
 
     steps:
       - name: Check out repository
@@ -14,15 +17,39 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.11'
 
       - name: Install Ansible
         run: |
           python -m pip install --upgrade pip
-          pip install ansible-core
+          pip install ansible-core==2.16.19
+
+      - name: Check native artifact integrity guards
+        run: python scripts/tests/test_native.py
+
+      - name: Check runtime selection and isolation
+        run: python scripts/tests/test_runtime.py
+
+      - name: Check sparse journal disk accounting
+        run: python scripts/tests/test_journal_storage.py
+
+      - name: Check credential labels and secret-safe failures
+        run: python scripts/tests/test_credential_keys.py
+
+      - name: Check client retry boundaries
+        run: python scripts/tests/test_client_requests.py
+
+      - name: Validate shared configuration with reviewed official binaries
+        run: python scripts/tests/test_runtime_config.py
+
+      - name: Validate pinned Docker image config permissions
+        run: |
+          python scripts/tests/test_docker_config.py
+          XRAY_CONTAINER_IMAGE_VERSION=25.10.15 python scripts/tests/test_docker_config.py
 
       - name: Run Ansible syntax check
         env:
+          XRAY_DEPLOYMENT_MODE: ${{ matrix.mode }}
           XRAY_UUID: 00000000-0000-0000-0000-000000000000
           XRAY_SHORT_IDS: deadbeefcafebabe
           XRAY_PRIVATE_KEY: FAKE_PRIVATE_KEY
@@ -32,4 +59,3 @@ jobs:
             -i ansible/inventory.yml \
             ansible/site.yml \
             --syntax-check
-
