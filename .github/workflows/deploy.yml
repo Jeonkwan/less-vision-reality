@@ -44,6 +44,11 @@ on:
         required: false
         default: ""
         type: string
+      xray_version:
+        description: Reviewed pinned native Xray release
+        required: false
+        type: string
+        default: "25.10.15"
       limit:
         description: >-
           Optional Ansible limit pattern (host or group) to scope the deployment.
@@ -91,6 +96,11 @@ on:
         required: false
         type: string
         default: ""
+      xray_version:
+        description: Reviewed pinned native Xray release
+        required: false
+        type: string
+        default: "25.10.15"
       limit:
         description: >-
           Optional Ansible limit pattern (host or group) to scope the deployment.
@@ -154,6 +164,7 @@ jobs:
     needs: validate-environment
     environment: ${{ needs.validate-environment.outputs.environment }}
     env:
+      XRAY_VERSION: ${{ inputs.xray_version || '25.10.15' }}
       ANSIBLE_HOST_KEY_CHECKING: "false"
       XRAY_UUID: ${{ inputs.xray_uuid || github.event.inputs.xray_uuid || secrets.XRAY_UUID }}
       XRAY_SHORT_IDS: ${{ inputs.xray_short_ids || github.event.inputs.xray_short_ids || secrets.XRAY_SHORT_IDS }}
@@ -178,7 +189,10 @@ jobs:
       - name: Install Ansible
         run: |
           python -m pip install --upgrade pip
-          pip install ansible-core~=2.16
+          pip install ansible-core==2.16.19
+
+      - name: Prepare verified native binary on runner
+        run: python scripts/prepare-native.py --version "$XRAY_VERSION" --directory "$RUNNER_TEMP/xray" --github-env "$GITHUB_ENV"
 
       - name: Mask sensitive variables
         shell: bash

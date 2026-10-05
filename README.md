@@ -109,3 +109,10 @@ The **Deploy Xray Stack** workflow (`.github/workflows/deploy.yml`) applies the 
 - `specs.md` – Project specifications and documentation expectations.
 
 See [disposable proxy VM strategy](docs/disposable-proxy-vms.md) for replacement-based updates, boot readiness and validation.
+
+## Native Xray feature
+
+`feature/native-xray` builds on `feature/bounded-logs`. Native runtime installation
+uses runner-verified official release binaries and systemd, with persistent bounded
+journald logs. See [native deployment](docs/native-xray.md). Existing container roles
+are legacy code and are not invoked by the native playbook.

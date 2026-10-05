@@ -1,10 +1,8 @@
 ---
-- name: Deploy Xray container with Docker Compose
+- name: Deploy native Xray under systemd
   hosts: xray_servers
   become: true
   gather_facts: false
-
   roles:
     - proxy_host_policy
-    - xray_common
-    - xray_deploy
+    - xray_native

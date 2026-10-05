@@ -1,107 +1,52 @@
-name: Diagnose proxy connectivity
-run-name: "Read-only proxy diagnostics (${{ inputs.environment }})"
-
-on:
+name: Native Xray validation
+run-name: 'Native validation: ${{ inputs.stage }} ${{ inputs.target }}'
+'on':
   workflow_dispatch:
     inputs:
-      environment:
-        description: GitHub environment holding existing Xray and SSH secrets
+      target:
+        type: choice
+        options:
+        - cream
+        - flatwhite
+        - decaf
+        default: cream
         required: true
-        default: flatwhite
-        type: environment
-      ssh_user:
-        description: SSH username (blank uses environment variable or ubuntu)
-        required: false
-        default: ''
+      stage:
+        type: choice
+        options:
+        - ready
+        - clients
+        - inspect
+        - baseline
+        - compare
+        - reboot
+        - recovery
+        - logs
+        default: clients
+        required: true
+      address:
         type: string
-
-permissions:
-  contents: read
-
+        required: true
+        description: Expected static IP
 concurrency:
-  group: proxy-diagnostics-${{ inputs.environment }}
+  group: native-validation-${{ inputs.target }}
   cancel-in-progress: false
-
 jobs:
-  diagnose:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: ${{ inputs.environment }}
+    environment: flatwhite
+    timeout-minutes: 20
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+      XRAY_UUID: ${{ secrets.XRAY_UUID }}
+      XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+      XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
+      TARGET: ${{ inputs.target }}
+      STAGE: ${{ inputs.stage }}
+      ADDRESS: ${{ inputs.address }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install pinned sing-box client
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          curl --fail --silent --show-error --location --max-time 90 \
-            https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz \
-            --output sing-box.tar.gz
-          echo '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e  sing-box.tar.gz' | sha256sum --check
-          tar -xzf sing-box.tar.gz
-          echo "$RUNNER_TEMP/sing-box-1.11.4-linux-amd64" >> "$GITHUB_PATH"
-      - name: Inspect hosts over SSH without changing services
-        continue-on-error: true
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
-          SSH_USER_INPUT: ${{ inputs.ssh_user }}
-          SSH_USER_DEFAULT: ${{ vars.REMOTE_SERVER_USER }}
-          SSH_PORT_DEFAULT: ${{ vars.REMOTE_SERVER_PORT }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "$SSH_PRIVATE_KEY" ]; then
-            echo 'HOST_SSH_PRIVATE_KEY is not configured in the selected environment.'
-            exit 1
-          fi
-          key_dir=$(mktemp -d "$RUNNER_TEMP/proxy-ssh.XXXXXX")
-          trap 'rm -rf "$key_dir"' EXIT
-          chmod 700 "$key_dir"
-          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_dir/key"
-          chmod 600 "$key_dir/key"
-          ssh_user="${SSH_USER_INPUT:-${SSH_USER_DEFAULT:-ubuntu}}"
-          ssh_port="${SSH_PORT_DEFAULT:-22}"
-          for node in cream decaf; do
-            host="$node.mokamaker.site"
-            echo "::group::$node read-only host diagnostics"
-            # First-use host-key discovery, followed by mandatory host-key checking.
-            if ssh-keyscan -T 8 -p "$ssh_port" "$host" > "$key_dir/known_hosts" 2>/dev/null; then
-              timeout 100 ssh -i "$key_dir/key" -p "$ssh_port" \
-                -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 \
-                -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$key_dir/known_hosts" \
-                "$ssh_user@$host" 'bash -s' < scripts/diagnostics/host-readonly.sh || \
-                echo "SSH diagnostics failed for $node; client checks will still run."
-            else
-              echo "SSH port unreachable or host-key discovery failed for $node."
-            fi
-            echo '::endgroup::'
-          done
-      - name: Test authenticated REALITY connections from outside China
-        env:
-          XRAY_UUID: ${{ secrets.XRAY_UUID }}
-          XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
-          XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for value in "$XRAY_UUID" "$XRAY_PUBLIC_KEY" "$XRAY_SHORT_IDS"; do
-            if [ -z "$value" ]; then
-              echo 'Required Xray secret is missing in selected environment.'
-              exit 1
-            fi
-            echo "::add-mask::$value"
-          done
-          python scripts/diagnostics/check-proxies.py | tee "$RUNNER_TEMP/client-diagnostics.txt"
-      - name: Publish client diagnostic summary
-        if: always()
-        shell: bash
-        run: |
-          if [ -f "$RUNNER_TEMP/client-diagnostics.txt" ]; then
-            printf '### Read-only client diagnostics\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
-            cat "$RUNNER_TEMP/client-diagnostics.txt" >> "$GITHUB_STEP_SUMMARY"
-            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
-          fi
+    - uses: actions/checkout@v4
+    - name: Install verified test clients on runner
+      run: bash scripts/install-test-clients.sh
+    - name: Validate selected host and supplied client profiles
+      run: python3 scripts/native-validation.py

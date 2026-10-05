@@ -13,7 +13,7 @@ have been validated on Linux.
 | GitHub CLI (`gh`) | Authenticated CLI for repository access and Actions; tested 2.46.0 |
 | Terraform | 1.6.6; infrastructure repo CI version |
 | Ansible core | 2.16.19; tested with Python 3.12 |
-| Docker Engine / Compose | Optional on workstation; credential generation requires Docker; deployed host needs Compose v2 |
+| Docker Engine / Compose | Optional on workstation; credential generation requires Docker; not required on native deployed hosts |
 | AWS CLI v2 | Optional for direct AWS inspection; unnecessary for local static checks |
 | sing-box | Optional 1.11.4 for supplied legacy client configurations and authenticated proxy validation |
 
@@ -34,8 +34,7 @@ terraform version
 gh --version
 ```
 
-The current playbook uses `ansible.builtin` modules and invokes Docker Compose
-through the CLI. No extra Ansible Galaxy collection or Python Docker SDK is
+The current playbook uses `ansible.builtin` modules and deploys a checksum-verified native Xray binary under systemd. No extra Ansible Galaxy collection or Python Docker SDK is
 required for this deployment. Python's standard library suffices for the
 bootstrap tests and diagnostic script. Do not install unrelated packages by default.
 
@@ -47,7 +46,7 @@ workspace-specific and is not part of a fresh repository clone.
 
 Clone `Jeonkwan/lightsail-proxy` (Terraform and OS bootstrap) and
 `Jeonkwan/less-vision-reality` (Ansible and Xray) as sibling directories. Changes
-currently use `feature/bounded-logs` in both repositories. Check remote branch
+currently use `feature/native-xray` in both repositories. Check remote branch
 availability before checkout; do not assume it remains the development branch
 forever. `Jeonkwan/gcp-proxy` is a separate optional infrastructure project;
 GCP credentials and tooling are not prerequisites for this Lightsail work.
@@ -57,8 +56,8 @@ mkdir -p proxy-workspace
 cd proxy-workspace
 gh repo clone Jeonkwan/lightsail-proxy
 gh repo clone Jeonkwan/less-vision-reality
-git -C lightsail-proxy switch feature/bounded-logs
-git -C less-vision-reality switch feature/bounded-logs
+git -C lightsail-proxy switch feature/native-xray
+git -C less-vision-reality switch feature/native-xray
 ```
 
 ## Authentication and configuration
@@ -106,14 +105,12 @@ The selected deployment environment supplies `HOST_SSH_PRIVATE_KEY`, `XRAY_UUID`
 key/SNI settings. Supply host address/user/port using the workflow's inputs and
 variables; review `.github/workflows/deploy.yml` and [secrets guide](secrets-management.md).
 The managed host must be Ubuntu with Python 3 and active `kho=off`; the playbook
-verifies the host maintenance policy and installs Docker/Compose if necessary.
+verifies the host maintenance policy and deploys the verified binary.
 No Ansible installation on the managed VM is needed for runner-controlled deployment.
 
 Validation of a live proxy requires matching client UUID, Reality public key,
 short ID and SNI, plus an actual VLESS/Reality HTTPS request through sing-box;
-a listening TCP port alone is insufficient. The diagnostic script on this
-feature branch currently targets Cream/Decaf; do not blindly run it against a
-retired name. Flat White validation uses the separate operational validation
-branch/workflow. Select intended hosts and inspect the workflow before dispatch.
+a listening TCP port alone is insufficient. The native validation workflow requires an explicitly selected target and expected
+IP. It tests both supplied client transport profiles using runner-side clients.
 Runner success does not establish connectivity from a China Unicom client.
 Read [disposable VM strategy](disposable-proxy-vms.md) before live tests.
