@@ -13,6 +13,7 @@ run-name: 'Flat White disposable validation: ${{ inputs.stage }}'
         - check
         - reboot
         - monitor
+        - inspect
         default: ready
       expected_ip:
         description: Guarded Flat White static IP
@@ -37,6 +38,7 @@ jobs:
       XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
       XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
       EXPECTED_IP: ${{ inputs.expected_ip }}
+      STAGE: ${{ inputs.stage }}
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python
@@ -60,10 +62,25 @@ jobs:
         \ for x in socket.getaddrinfo('flatwhite.mokamaker.site',22,type=socket.SOCK_STREAM)}=={os.environ['EXPECTED_IP']}\n\
         DNS\n then\n  if timeout 25 ssh -i \"$key_dir/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
         \ -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=\"\
-        $key_dir/known_hosts\" ubuntu@flatwhite.mokamaker.site 'test -f /var/lib/proxy-bootstrap/complete\
-        \ && grep -qw kho=off /proc/cmdline && uname -r'; then\n   connected=true;break\n\
+        $key_dir/known_hosts\" ubuntu@flatwhite.mokamaker.site \"if [ '$STAGE' = inspect\
+        \ ]; then uname -r; else test -f /var/lib/proxy-bootstrap/complete && grep\
+        \ -qw kho=off /proc/cmdline && uname -r; fi\"; then\n   connected=true;break\n\
         \  fi\n fi\n echo \"Waiting for completed bootstrap/DNS/SSH, attempt $attempt\"\
         \n sleep 10\ndone\n[ \"$connected\" = true ]\n"
+    - name: Inspect bootstrap failure without modifying host
+      if: ${{ inputs.stage == 'inspect' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@flatwhite.mokamaker.site ''uname -r; cat /proc/cmdline; free -h; sudo
+        -n cloud-init status; sudo -n systemctl status proxy-bootstrap.service --no-pager
+        || true; sudo -n journalctl -u proxy-bootstrap.service --no-pager -n 50; sudo
+        -n tail -60 /var/log/cloud-init-output.log; sudo -n ls -la /var/lib/proxy-bootstrap;
+        sudo -n systemctl list-timers --all --no-pager''
+
+        '
     - name: Validate provisioning without package or kernel updates
       if: ${{ inputs.stage == 'ready' }}
       shell: bash
@@ -81,7 +98,7 @@ jobs:
 
         '
     - name: Validate authenticated proxy and host
-      if: ${{ inputs.stage != 'ready' }}
+      if: ${{ inputs.stage != 'ready' && inputs.stage != 'inspect' }}
       shell: bash
       run: 'set -euo pipefail
 
