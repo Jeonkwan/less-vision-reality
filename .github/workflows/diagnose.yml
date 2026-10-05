@@ -78,7 +78,11 @@ jobs:
         -n cloud-init status; sudo -n systemctl status proxy-bootstrap.service --no-pager
         || true; sudo -n journalctl -u proxy-bootstrap.service --no-pager -n 50; sudo
         -n tail -60 /var/log/cloud-init-output.log; sudo -n ls -la /var/lib/proxy-bootstrap;
-        sudo -n systemctl list-timers --all --no-pager''
+        sudo -n systemctl list-timers --all --no-pager; sudo -n systemctl show proxy-bootstrap.service
+        -p ConditionResult -p ActiveState -p SubState -p After -p Before; sudo -n
+        systemctl cat cloud-final.service cloud-init.target proxy-bootstrap.service;
+        sudo -n journalctl -b --no-pager --grep="Ordering cycle|proxy-bootstrap|deleted
+        to break" -n 35; sudo -n snap list; sudo -n snap refresh --time''
 
         '
     - name: Validate provisioning without package or kernel updates
