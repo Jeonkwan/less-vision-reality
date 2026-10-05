@@ -30,6 +30,9 @@ jobs:
       - name: Check runtime selection and isolation
         run: python scripts/tests/test_runtime.py
 
+      - name: Check sparse journal disk accounting
+        run: python scripts/tests/test_journal_storage.py
+
       - name: Validate shared configuration with reviewed official binaries
         run: python scripts/tests/test_runtime_config.py
 
@@ -48,4 +51,3 @@ jobs:
             -i ansible/inventory.yml \
             ansible/site.yml \
             --syntax-check
-

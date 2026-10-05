@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Selected-host diagnostics and authenticated checks; no credentials in output."""
-import json,os,pathlib,shlex,socket,subprocess,tempfile,time
+import inspect,json,os,pathlib,shlex,socket,subprocess,tempfile,time
+
+def journal_allocated_bytes(paths):
+ """Match journald/du disk accounting, excluding sparse reserved file space."""
+ return sum(path.stat().st_blocks*512 for path in paths)
 
 def write_private_key(path,value):
  path.write_text(value.strip()+'\n')
@@ -93,12 +97,12 @@ print('Docker log rotation PASS; files',len(files),'bytes',sum(p.stat().st_size 
   if stage=='logs':
    before=int(remote("sudo -n find /var/log/journal -name '*@*.journal' | wc -l"))
    print(remote("sudo -n systemd-run --wait --unit=xray-journal-probe --property=StandardOutput=journal --property=LogRateLimitIntervalSec=0 /usr/bin/python3 -c 'import os,base64; [print(base64.b64encode(os.urandom(768)).decode()) for i in range(45000)]'",timeout=150))
-   code="""import pathlib,subprocess
+   code="import pathlib,subprocess\n"+inspect.getsource(journal_allocated_bytes)+"""
 subprocess.run(['journalctl','--sync'],check=True)
-files=list(pathlib.Path('/var/log/journal').rglob('*.journal'))
+files=[p for p in pathlib.Path('/var/log/journal').rglob('*') if p.is_file() and p.name.endswith(('.journal','.journal~'))]
 assert len([p for p in files if '@' in p.name])>BEFORE,'Journal did not rotate'
-size=sum(x.stat().st_size for x in files)
-print('Journal measurement; files',len(files),'bytes',size,flush=True)
+size=journal_allocated_bytes(files)
+print('Journal measurement; files',len(files),'allocated bytes',size,'logical bytes',sum(p.stat().st_size for p in files),flush=True)
 print(subprocess.check_output(['journalctl','--disk-usage'],text=True),flush=True)
 assert size<=115*1024**2,'Persistent journal exceeded budget and file slack'
 print('Journal rotation PASS; files',len(files),'bytes',size)

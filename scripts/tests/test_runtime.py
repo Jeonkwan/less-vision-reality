@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import shutil
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -77,6 +78,17 @@ class Ownership(unittest.TestCase):
 
 
 class Selector(unittest.TestCase):
+    def test_port_probe_rejects_and_preserves_unrelated_listener(self):
+        task=yaml.safe_load((ROOT/'ansible/tasks/switch-runtime.yml').read_text())[-1]
+        probe=task['ansible.builtin.command']['argv'][:3]
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1',0));listener.listen()
+            port=listener.getsockname()[1]
+            result=subprocess.run(probe+[str(port)],capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('Address already in use',result.stderr)
+            with socket.create_connection(('127.0.0.1',port),timeout=1):pass
+
     def run_play(self, directory, mode, extra=None, tags=None):
         inventory = directory / 'inventory.yml'
         inventory.write_text('all:\n  children:\n    xray_servers:\n      hosts:\n        test:\n          ansible_connection: local\n')
