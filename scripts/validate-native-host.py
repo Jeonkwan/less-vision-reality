@@ -18,7 +18,7 @@ conf=run('systemd-analyze','cat-config','systemd/journald.conf');effective={}
 for line in conf.splitlines():
  if line.strip() and not line.lstrip().startswith('#') and '=' in line:
   k,v=line.split('=',1);effective[k.strip()]=v.strip()
-assert all(effective.get(k)==v for k,v in {'Storage':'persistent','SystemMaxUse':'100M','RuntimeMaxUse':'32M','SystemMaxFileSize':'10M','MaxRetentionSec':'7day','ForwardToSyslog':'no'}.items())
+assert all(effective.get(k)==v for k,v in {'Storage':'persistent','SystemMaxUse':'100M','RuntimeMaxUse':'32M','SystemMaxFileSize':'10M','MaxRetentionSec':'7day','ForwardToSyslog':'no'}.items()),str({k:effective.get(k) for k in ['Storage','SystemMaxUse','RuntimeMaxUse','SystemMaxFileSize','MaxRetentionSec','ForwardToSyslog']})
 assert 'hold: forever' in run('snap','refresh','--time') if shutil.which('snap') else True
 print(run('/usr/local/bin/xray','version'));print('Kernel',run('uname','-r'))
 print(run('systemctl','show','xray','-p','MainPID','-p','NRestarts','-p','ExecMainStartTimestampMonotonic'))

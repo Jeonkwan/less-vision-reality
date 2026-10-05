@@ -17,7 +17,7 @@ def main():
   ssh=['ssh','-i',str(key),'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','ConnectTimeout=10','-o','StrictHostKeyChecking=accept-new','-o','UserKnownHostsFile='+str(p/'known_hosts'),'ubuntu@'+address]
   def remote(cmd,check=True,timeout=100):
    r=subprocess.run(ssh+[cmd],capture_output=True,text=True,timeout=timeout)
-   if check and r.returncode:raise RuntimeError('Remote check failed: '+r.stderr[:250])
+   if check and r.returncode:raise RuntimeError('Remote check failed: '+r.stderr[:1000])
    return r.stdout.strip()
   def clients():
    subprocess.run(['python3','scripts/check-native-clients.py','--nodes',target,'--address',address],check=True)
