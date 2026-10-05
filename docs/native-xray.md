@@ -38,3 +38,6 @@ Terraform operations validate exact target identity and resource scope, preserve
 other instances, and guard instance-only replacement so static IP/key/DNS remain.
 Destruction removes owned snapshots, an empty workspace and parks retired DNS.
 Both product PRs remain draft until explicitly approved for merge.
+
+See [validation evidence](native-xray-validation.md) for the fresh-instance client,
+lifecycle and retention tests, cutover, cleanup and measured deployment times.
