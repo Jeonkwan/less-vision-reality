@@ -49,6 +49,17 @@ class Ownership(unittest.TestCase):
     def test_daemon_failure_is_not_absence(self):
         with self.assertRaises(subprocess.CalledProcessError): self.inspect(daemon_fails=True)
 
+    def test_absent_unit_exit_one_is_recognized(self):
+        def call(argv, **kwargs):
+            rc,out=(1,'not-found') if argv[1]=='show' else (3,'inactive')
+            if kwargs.get('check') and rc:
+                raise subprocess.CalledProcessError(rc,argv)
+            return subprocess.CompletedProcess(argv,rc,out,'')
+        with tempfile.TemporaryDirectory() as tmp:
+            data=module.inspect(pathlib.Path(tmp),call,docker=False)
+            self.assertFalse(data['native_exists'])
+            self.assertFalse(data['native_running'])
+
     def test_unrelated_native_unit_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp); unit = root / 'etc/systemd/system/xray.service'
@@ -157,6 +168,19 @@ class Selector(unittest.TestCase):
                     self.assertIn('LIFECYCLE_xray_'+('native' if mode=='native' else 'deploy'),result.stdout)
                     self.assertNotIn('Unexpected normal deployment task',result.stdout)
                     self.assertNotIn('LIFECYCLE_xray_'+('deploy' if mode=='native' else 'native'),result.stdout)
+
+    def test_controller_cleanup_handles_skipped_registered_result(self):
+        cleanup=yaml.safe_load((ROOT/'ansible/roles/xray_native/tasks/main.yml').read_text())[-1]
+        for prepared in [False,True]:
+            with self.subTest(prepared=prepared),tempfile.TemporaryDirectory() as tmp:
+                directory=pathlib.Path(tmp);artifact=directory/'artifact';artifact.mkdir()
+                registered={'path':str(artifact)} if prepared else {'skipped':True,'changed':False}
+                play=[{'hosts':'all','gather_facts':False,'vars':{'xray_controller_directory':registered},'tasks':[cleanup]}]
+                playfile=directory/'play.yml';playfile.write_text(yaml.safe_dump(play))
+                result=subprocess.run(['ansible-playbook','-i','localhost,','-c','local',str(playfile)],
+                    env={**os.environ,'ANSIBLE_LOCAL_TEMP':'/tmp/ansible-local'},capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertEqual(artifact.exists(),not prepared)
 
     def test_pre_compose_activation_failure_restores_native(self):
         # Execute the actual rescue task conditions with harmless action sentinels.

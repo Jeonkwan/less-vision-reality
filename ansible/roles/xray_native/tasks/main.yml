@@ -210,4 +210,4 @@
     state: absent
   delegate_to: localhost
   become: false
-  when: xray_controller_directory is defined
+  when: xray_controller_directory.path is defined
