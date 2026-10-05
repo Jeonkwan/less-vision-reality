@@ -178,7 +178,7 @@ class Selector(unittest.TestCase):
                 play=[{'hosts':'all','gather_facts':False,'vars':{'xray_controller_directory':registered},'tasks':[cleanup]}]
                 playfile=directory/'play.yml';playfile.write_text(yaml.safe_dump(play))
                 result=subprocess.run(['ansible-playbook','-i','localhost,','-c','local',str(playfile)],
-                    env={**os.environ,'ANSIBLE_LOCAL_TEMP':'/tmp/ansible-local'},capture_output=True,text=True)
+                    env={**os.environ,'ANSIBLE_LOCAL_TEMP':'/tmp/ansible-local','ANSIBLE_REMOTE_TEMP':'/tmp/ansible-remote'},capture_output=True,text=True)
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)
                 self.assertEqual(artifact.exists(),not prepared)
 
