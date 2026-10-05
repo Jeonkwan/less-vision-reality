@@ -9,8 +9,8 @@
         that:
           - xray_deployment_mode in ['native', 'docker']
           - xray_binary_version in ['25.10.15', '26.3.27']
-          - xray_container_image_version == '25.10.15'
-          - xray_container_image == 'ghcr.io/xtls/xray-core:25.10.15'
+          - xray_container_image_version in ['25.10.15', '26.3.27']
+          - xray_container_image == 'ghcr.io/xtls/xray-core:' ~ xray_container_image_version
           - xray_service_name == 'xray'
           - xray_config_file == 'config.json'
           - xray_container_confdir == '/usr/local/etc/xray'

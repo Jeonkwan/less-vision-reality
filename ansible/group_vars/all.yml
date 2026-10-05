@@ -14,7 +14,7 @@
 xray_deployment_mode: "{{ lookup('env', 'XRAY_DEPLOYMENT_MODE') | default('native', true) }}"
 xray_allow_runtime_switch: false
 xray_binary_version: "{{ lookup('env', 'XRAY_VERSION') | default('26.3.27', true) }}"
-xray_container_image_version: "{{ lookup('env', 'XRAY_CONTAINER_IMAGE_VERSION') | default('25.10.15', true) }}"
+xray_container_image_version: "{{ lookup('env', 'XRAY_CONTAINER_IMAGE_VERSION') | default('26.3.27', true) }}"
 xray_container_image: "ghcr.io/xtls/xray-core:{{ xray_container_image_version }}"
 xray_service_name: xray
 xray_service_root: /opt/xray

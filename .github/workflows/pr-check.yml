@@ -40,7 +40,9 @@ jobs:
         run: python scripts/tests/test_runtime_config.py
 
       - name: Validate pinned Docker image config permissions
-        run: python scripts/tests/test_docker_config.py
+        run: |
+          python scripts/tests/test_docker_config.py
+          XRAY_CONTAINER_IMAGE_VERSION=25.10.15 python scripts/tests/test_docker_config.py
 
       - name: Run Ansible syntax check
         env:

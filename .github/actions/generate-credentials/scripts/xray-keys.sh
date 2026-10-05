@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-IMAGE="${XRAY_IMAGE:-ghcr.io/xtls/xray-core:25.10.15}"
+IMAGE="${XRAY_IMAGE:-ghcr.io/xtls/xray-core:26.3.27}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker binary not found in PATH" >&2

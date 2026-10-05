@@ -54,7 +54,7 @@ def main():
    print(remote("uname -r; sudo -n cloud-init status; sudo -n systemctl show proxy-bootstrap.service -p Result; sudo -n journalctl -u proxy-bootstrap.service -n 8 --no-pager"));return
   if stage=='clients':clients();return
   if stage=='inspect':
-   code='import os\nos.environ[\"XRAY_DEPLOYMENT_MODE\"]='+repr(mode)+'\nos.environ[\"XRAY_REQUIRE_MINIMAL_HOST\"]='+repr(os.environ.get('XRAY_REQUIRE_MINIMAL_HOST','false'))+'\n'+pathlib.Path('scripts/validate-native-host.py').read_text()
+   code='import os\nos.environ[\"XRAY_DEPLOYMENT_MODE\"]='+repr(mode)+'\nos.environ[\"XRAY_REQUIRE_MINIMAL_HOST\"]='+repr(os.environ.get('XRAY_REQUIRE_MINIMAL_HOST','false'))+'\nos.environ[\"XRAY_CONTAINER_IMAGE_VERSION\"]='+repr(os.environ.get('XRAY_CONTAINER_IMAGE_VERSION','26.3.27'))+'\n'+pathlib.Path('scripts/validate-native-host.py').read_text()
    print(remote("sudo -n python3 - <<'PY'\n"+code+"\nPY"));clients();return
   def baseline():
    if mode=='docker':

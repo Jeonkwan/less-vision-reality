@@ -3,6 +3,11 @@ run-name: 'Runtime validation: ${{ inputs.stage }} ${{ inputs.target }} ${{ inpu
 'on':
   workflow_dispatch:
     inputs:
+      container_image_version:
+        type: choice
+        options: ["26.3.27", "25.10.15"]
+        default: "26.3.27"
+        description: Expected reviewed Docker image version
       deployment_mode:
         type: choice
         options: [native, docker]
@@ -72,6 +77,7 @@ jobs:
       XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
       XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
       XRAY_REQUIRE_MINIMAL_HOST: ${{ inputs.require_minimal_host }}
+      XRAY_CONTAINER_IMAGE_VERSION: ${{ inputs.container_image_version }}
       XRAY_DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
       TARGET: ${{ inputs.target }}
       STAGE: ${{ inputs.stage }}

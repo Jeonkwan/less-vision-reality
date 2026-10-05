@@ -3,13 +3,17 @@
 Docker on the controller is required. Only ephemeral IDs created here are removed.
 Generated keys stay in memory; no credentials or published ports are involved.
 """
-import io,json,pathlib,subprocess,tarfile
+import io,json,os,pathlib,subprocess,tarfile
 from jinja2 import Environment
-image='ghcr.io/xtls/xray-core:25.10.15'
+image='ghcr.io/xtls/xray-core:'+os.environ.get('XRAY_CONTAINER_IMAGE_VERSION','26.3.27')
 docker=['docker']
 subprocess.run(docker+['pull',image],check=True,capture_output=True)
 data=json.loads(subprocess.check_output(docker+['image','inspect',image],text=True))[0]
 assert data['Config']['User']=='65532'
+assert data['Config']['Entrypoint']==['/usr/local/bin/xray']
+reported=subprocess.check_output(docker+['run','--rm','--network','none',image,'version'],text=True)
+assert reported.splitlines()[0].startswith('Xray '+image.rsplit(':',1)[1]+' ')
+print(reported.splitlines()[0])
 private=subprocess.check_output(docker+['run','--rm','--network','none',image,'x25519'],text=True)
 private=next(line.split(':',1)[1].strip() for line in private.splitlines() if line.startswith(('Private key:','PrivateKey:')))
 template=Environment().from_string((pathlib.Path(__file__).resolve().parents[2]/'ansible/templates/config.json.j2').read_text())

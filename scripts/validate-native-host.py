@@ -32,7 +32,9 @@ else:
  assert subprocess.run(['systemctl','is-enabled','--quiet','xray']).returncode!=0
  data=json.loads(run('docker','inspect','xray'))[0]
  assert data['State']['Running'] and not data['State']['Restarting']
- assert data['Config']['Image']=='ghcr.io/xtls/xray-core:25.10.15'
+ version=os.environ.get('XRAY_CONTAINER_IMAGE_VERSION','26.3.27')
+ assert version in ['25.10.15','26.3.27']
+ assert data['Config']['Image']=='ghcr.io/xtls/xray-core:'+version
  labels=data['Config']['Labels']
  assert labels['com.docker.compose.project']=='xray'
  assert labels['com.docker.compose.service']=='xray'
@@ -60,6 +62,8 @@ if mode=='native':
  print('Reviewed Xray binary SHA-256',digest)
  print(run('systemctl','show','xray','-p','MainPID','-p','NRestarts','-p','ExecMainStartTimestampMonotonic'))
 else:
- print(run('docker','exec','xray','/usr/local/bin/xray','version'))
+ reported=run('docker','exec','xray','/usr/local/bin/xray','version')
+ assert reported.splitlines()[0].startswith('Xray '+version+' ')
+ print(reported)
 print('Kernel',run('uname','-r'))
 print(mode,'host policy, permissions and bounded logs PASS')

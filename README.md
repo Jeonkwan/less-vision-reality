@@ -14,7 +14,7 @@ shared client credentials, boot/maintenance policy and bounded host journals.
 The **Deploy Xray Stack** workflow accepts a credential environment, target SSH
 address/user, `deployment_mode`, native `xray_version`, Docker
 `container_image_version`, and explicit `allow_runtime_switch`. Version defaults
-remain native 26.3.27 and Docker 25.10.15. Credentials are supplied by the selected
+remain native 26.3.27 and Docker 26.3.27. Credentials are supplied by the selected
 environment or existing overrides; optional SNI falls back to `web.wechat.com`.
 
 Use [setup](docs/setup.md), [operations](docs/operations.md) and
@@ -29,7 +29,7 @@ been deployed to serving nodes.
 
 The existing manual/PR credential workflows and `scripts/generate_xray_credentials.sh`
 use throwaway Docker containers on the controller to generate UUIDs, short IDs and
-Reality key pairs using pinned Xray 25.10.15. Docker is optional for local credential
+Reality key pairs using pinned Xray 26.3.27. Docker is optional for local credential
 generation and unnecessary on native VMs. Store generated values securely; never
 commit credential output or personal client files. Supply `XRAY_UUID`, `XRAY_SHORT_IDS`,
 `XRAY_PRIVATE_KEY`, `XRAY_PUBLIC_KEY` and optional `XRAY_SNI` to deployment securely.

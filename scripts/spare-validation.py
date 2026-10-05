@@ -110,7 +110,7 @@ assert not run('docker','network','ls','--filter','name=^'+name+'$','-q')
 p=pathlib.Path('/opt/xray-unrelated-validation');assert not p.exists()
 p.mkdir(mode=0o700);(p/'config.json').write_text('{}')
 network=run('docker','network','create','--label','less-vision-reality.fixture=true',name)
-container=run('docker','create','--name',name,'--label','less-vision-reality.fixture=true','--network',network,'ghcr.io/xtls/xray-core:25.10.15','version')
+container=run('docker','create','--name',name,'--label','less-vision-reality.fixture=true','--network',network,'ghcr.io/xtls/xray-core:26.3.27','version')
 print(json.dumps(dict(container=container,network=network)))
 """
             fixture = json.loads(remote(code))

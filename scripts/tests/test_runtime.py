@@ -113,6 +113,18 @@ class Selector(unittest.TestCase):
             self.assertNotIn('Inspect managed runtimes', result.stdout)
             self.assertNotIn('UNREACHABLE!', result.stdout)
 
+    def test_unreviewed_or_mismatched_image_fails_before_host_operations(self):
+        for overrides in [{'xray_container_image_version':'latest'},
+                          {'xray_container_image_version':'26.3.27',
+                           'xray_container_image':'ghcr.io/xtls/xray-core:25.10.15'}]:
+            with self.subTest(overrides=overrides), tempfile.TemporaryDirectory() as tmp:
+                directory=pathlib.Path(tmp)/'ansible'
+                shutil.copytree(ROOT/'ansible',directory)
+                result=self.run_play(directory,'docker',overrides)
+                self.assertNotEqual(result.returncode,0)
+                self.assertIn('Unsupported runtime',result.stdout)
+                self.assertNotIn('Inspect managed runtimes',result.stdout)
+
     def test_executed_dispatch_isolates_native_and_docker_roles(self):
         # Execute the real orchestration/defaults with harmless role sentinels.
         # This checks Ansible's conditions, rather than only YAML syntax/text.

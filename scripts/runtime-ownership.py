@@ -69,7 +69,7 @@ def inspect(root=pathlib.Path('/'), call=subprocess.run, docker=None):
             volumes = service.get('volumes', [])
             if (set(definition.get('services', {})) != {'xray'} or
                     service.get('container_name') != 'xray' or
-                    service.get('image') != 'ghcr.io/xtls/xray-core:25.10.15' or
+                    service.get('image') not in ['ghcr.io/xtls/xray-core:25.10.15', 'ghcr.io/xtls/xray-core:26.3.27'] or
                     not any(v.get('source') == '/opt/xray/config' and
                             v.get('target') == '/usr/local/etc/xray' for v in volumes)):
                 raise RuntimeError('Refusing unrelated Docker configuration')

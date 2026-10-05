@@ -59,7 +59,7 @@ on:
         description: Reviewed pinned Docker image version (separate from native xray_version)
         required: false
         type: string
-        default: "25.10.15"
+        default: "26.3.27"
       xray_version:
         description: Reviewed pinned native Xray release
         required: false
@@ -126,7 +126,7 @@ on:
         description: Reviewed pinned Docker image version (separate from native xray_version)
         required: false
         type: string
-        default: "25.10.15"
+        default: "26.3.27"
       xray_version:
         description: Reviewed pinned native Xray release
         required: false
@@ -196,7 +196,7 @@ jobs:
     environment: ${{ needs.validate-environment.outputs.environment }}
     env:
       XRAY_DEPLOYMENT_MODE: ${{ inputs.deployment_mode || 'native' }}
-      XRAY_CONTAINER_IMAGE_VERSION: ${{ inputs.container_image_version || '25.10.15' }}
+      XRAY_CONTAINER_IMAGE_VERSION: ${{ inputs.container_image_version || '26.3.27' }}
       ALLOW_RUNTIME_SWITCH: ${{ inputs.allow_runtime_switch || false }}
       XRAY_VERSION: ${{ inputs.xray_version || '26.3.27' }}
       ANSIBLE_HOST_KEY_CHECKING: "false"
@@ -218,7 +218,7 @@ jobs:
           set -euo pipefail
           case "$XRAY_DEPLOYMENT_MODE" in native|docker) ;; *) exit 1 ;; esac
           case "$XRAY_VERSION" in 25.10.15|26.3.27) ;; *) exit 1 ;; esac
-          test "$XRAY_CONTAINER_IMAGE_VERSION" = 25.10.15
+          case "$XRAY_CONTAINER_IMAGE_VERSION" in 25.10.15|26.3.27) ;; *) exit 1 ;; esac
 
       - name: Check out repository
         uses: actions/checkout@v4
