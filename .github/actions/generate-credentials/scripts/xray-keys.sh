@@ -8,7 +8,9 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! XRAY_KEYS=$(docker run --rm "$IMAGE" x25519 2>&1); then
+if XRAY_KEYS=$(docker run --rm "$IMAGE" x25519 2>&1); then
+  :
+else
   status=$?
   echo "failed to execute xray container (exit $status)" >&2
   exit "$status"
@@ -44,7 +46,7 @@ while IFS= read -r line; do
         PRIVATE_KEY="$value"
       fi
       ;;
-    publickey|public|password)
+    publickey|public|password|'password(publickey)')
       if [ -z "$PUBLIC_KEY" ]; then
         PUBLIC_KEY="$value"
       fi
@@ -55,8 +57,7 @@ $XRAY_KEYS
 OUT
 
 if [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
-  echo "failed to parse xray key pair from output:" >&2
-  printf '%s\n' "$XRAY_KEYS" >&2
+  echo "failed to parse xray key pair; key values omitted" >&2
   exit 1
 fi
 
