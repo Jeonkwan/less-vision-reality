@@ -8,6 +8,10 @@ def write_private_key(path,value):
 
 def main():
  target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf'];socket.inet_aton(address)
+ if stage=='suite':
+  for part in ['inspect','logs','recovery','reboot','inspect']:
+   subprocess.run(['python3',__file__],env={**os.environ,'STAGE':part},check=True)
+  return
  with tempfile.TemporaryDirectory(prefix='native-ssh-') as tmp:
   p=pathlib.Path(tmp);key=p/'key';write_private_key(key,os.environ['SSH_PRIVATE_KEY'])
   ssh=['ssh','-i',str(key),'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','ConnectTimeout=10','-o','StrictHostKeyChecking=accept-new','-o','UserKnownHostsFile='+str(p/'known_hosts'),'ubuntu@'+address]
@@ -54,15 +58,17 @@ def main():
    else:raise RuntimeError('Service did not recover')
    print('Recovery PASS',stage,before,now);clients();return
   if stage=='logs':
-   print(remote("sudo -n systemd-run --wait --unit=xray-journal-probe --property=StandardOutput=journal --property=LogRateLimitIntervalSec=0 /usr/bin/python3 -c 'for i in range(45000): print(\"native-journal-probe \"+\"x\"*1000)'",timeout=150))
+   before=int(remote("sudo -n find /var/log/journal -name '*@*.journal' | wc -l"))
+   print(remote("sudo -n systemd-run --wait --unit=xray-journal-probe --property=StandardOutput=journal --property=LogRateLimitIntervalSec=0 /usr/bin/python3 -c 'import os,base64; [print(base64.b64encode(os.urandom(768)).decode()) for i in range(45000)]'",timeout=150))
    code="""import pathlib,subprocess
 files=list(pathlib.Path('/var/log/journal').rglob('*.journal'))
-assert len(files)>=2,'Journal did not rotate'
+assert len([p for p in files if '@' in p.name])>BEFORE,'Journal did not rotate'
 size=sum(x.stat().st_size for x in files)
 assert size<=115*1024**2,'Persistent journal exceeded budget and file slack'
 print('Journal rotation PASS; files',len(files),'bytes',size)
 print(subprocess.check_output(['journalctl','--disk-usage'],text=True))
 """
+   code=code.replace('BEFORE',str(before))
    print(remote("sudo -n python3 - <<'PY'\n"+code+"\nPY"));clients();return
   raise RuntimeError('Unknown stage')
 if __name__=='__main__':main()

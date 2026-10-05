@@ -23,6 +23,7 @@ run-name: 'Native validation: ${{ inputs.stage }} ${{ inputs.target }}'
         - reboot
         - recovery
         - logs
+        - suite
         default: clients
         required: true
       address:
