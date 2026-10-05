@@ -99,6 +99,13 @@
   notify: Restart Xray
   when: xray_candidate_path != xray_binary_path
 
+- name: Enforce installed binary ownership and permissions
+  ansible.builtin.file:
+    path: "{{ xray_binary_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Activate validated configuration
   ansible.builtin.copy:
     remote_src: true
