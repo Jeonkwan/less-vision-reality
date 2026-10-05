@@ -1,4 +1,8 @@
 ---
+- name: Require completed infrastructure bootstrap
+  ansible.builtin.command: test -f /var/lib/proxy-bootstrap/complete
+  changed_when: false
+
 - name: Verify supported Ubuntu host
   ansible.builtin.command: cat /etc/os-release
   register: proxy_host_os
@@ -106,3 +110,31 @@
       KHO boot policy is configured but not active. Perform one controlled reboot,
       wait for SSH and cloud-init completion, then rerun deployment. No reboot is
       scheduled by this playbook.
+
+- name: Configure bounded persistent journals
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/zz-proxy-retention.conf
+    content: |
+      [Journal]
+      Storage=persistent
+      SystemMaxUse=100M
+      RuntimeMaxUse=32M
+      SystemMaxFileSize=10M
+      MaxRetentionSec=7day
+      ForwardToSyslog=no
+    owner: root
+    group: root
+    mode: "0644"
+  register: xray_journal_policy
+
+- name: Remove superseded retention drop-in
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d/50-proxy-retention.conf
+    state: absent
+  register: xray_journal_legacy
+
+- name: Apply journal policy only when changed
+  ansible.builtin.systemd_service:
+    name: systemd-journald
+    state: restarted
+  when: xray_journal_policy.changed or xray_journal_legacy.changed

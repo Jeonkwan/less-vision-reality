@@ -1,0 +1,29 @@
+---
+- name: Stop failed selected native runtime before restoring Docker
+  ansible.builtin.systemd_service:
+    name: xray
+    state: stopped
+    enabled: false
+  when: xray_deployment_mode == 'native' and xray_existing.docker_running
+
+- name: Restore previous verified Docker container
+  ansible.builtin.command:
+    argv: [docker, start, "{{ xray_existing.docker_id }}"]
+  when: xray_deployment_mode == 'native' and xray_existing.docker_running
+
+- name: Stop selected Docker service before restoring native
+  ansible.builtin.command:
+    argv: [docker, stop, xray]
+  when: xray_deployment_mode == 'docker' and (xray_existing.native_running or xray_existing.native_enabled) and xray_compose_up is defined
+  failed_when: false
+
+- name: Restore previous verified native service
+  ansible.builtin.systemd_service:
+    name: xray
+    state: "{{ 'started' if xray_existing.native_running else 'stopped' }}"
+    enabled: "{{ xray_existing.native_enabled }}"
+  when: xray_deployment_mode == 'docker' and xray_existing.native_exists
+
+- name: Report activation failure after rollback attempt
+  ansible.builtin.fail:
+    msg: Selected runtime activation failed; previous runtime restoration was attempted. Inspect selected host before retrying.
