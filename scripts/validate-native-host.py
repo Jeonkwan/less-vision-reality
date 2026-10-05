@@ -1,5 +1,5 @@
 """Execute on selected VM via SSH; output only non-secret evidence."""
-import pathlib,subprocess,json,shutil,os,hashlib
+import pathlib,subprocess,json,shutil,os,hashlib,grp,pwd
 run=lambda *a:subprocess.check_output(a,text=True).strip()
 assert pathlib.Path('/var/lib/proxy-bootstrap/complete').exists()
 assert 'kho=off' in pathlib.Path('/proc/cmdline').read_text().split()
@@ -16,6 +16,13 @@ if mode=='native':
  assert run('systemctl','is-active','xray')=='active'
  assert run('systemctl','is-enabled','xray')=='enabled'
  assert run('systemctl','show','xray','-p','User','--value')=='xray'
+ assert run('systemctl','show','xray','-p','Group','--value')=='xray'
+ for option,value in {'CapabilityBoundingSet':'cap_net_bind_service','AmbientCapabilities':'cap_net_bind_service','NoNewPrivileges':'yes','ProtectSystem':'strict','ProtectHome':'yes','PrivateTmp':'yes'}.items():
+  assert run('systemctl','show','xray','-p',option,'--value')==value,option
+ config_stat=pathlib.Path('/usr/local/etc/xray/config.json').stat()
+ assert config_stat.st_uid==0 and config_stat.st_gid==grp.getgrnam('xray').gr_gid
+ pid=run('systemctl','show','xray','-p','MainPID','--value')
+ assert int(pid)>1 and int(run('ps','-o','uid=','-p',pid))==pwd.getpwnam('xray').pw_uid
  assert pathlib.Path('/usr/local/etc/xray/config.json').stat().st_mode & 0o777==0o640
  if shutil.which('docker'):
   assert not run('docker','ps','--filter','label=com.docker.compose.project=xray','--filter','label=com.docker.compose.service=xray','-q')
@@ -46,7 +53,9 @@ assert all(effective.get(k)==v for k,v in {'Storage':'persistent','SystemMaxUse'
 assert 'hold: forever' in run('snap','refresh','--time') if shutil.which('snap') else True
 if mode=='native':
  print(run('/usr/local/bin/xray','version'))
- print('Xray binary SHA-256',hashlib.sha256(pathlib.Path('/usr/local/bin/xray').read_bytes()).hexdigest())
+ digest=hashlib.sha256(pathlib.Path('/usr/local/bin/xray').read_bytes()).hexdigest()
+ assert digest in ['1d6b0fb6f2348683d59304c9f0bbf3611daa068527159b749374f12da252e78c','8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed']
+ print('Reviewed Xray binary SHA-256',digest)
  print(run('systemctl','show','xray','-p','MainPID','-p','NRestarts','-p','ExecMainStartTimestampMonotonic'))
 else:
  print(run('docker','exec','xray','/usr/local/bin/xray','version'))
