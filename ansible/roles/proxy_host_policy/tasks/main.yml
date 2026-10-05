@@ -1,0 +1,73 @@
+---
+- name: Verify supported Ubuntu host
+  ansible.builtin.command: cat /etc/os-release
+  register: proxy_host_os
+  changed_when: false
+
+- name: Require Ubuntu for host maintenance policy
+  ansible.builtin.assert:
+    that: >-
+      'ID=ubuntu' in proxy_host_os.stdout or 'ID="ubuntu"' in proxy_host_os.stdout
+
+- name: Disable background APT timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+
+- name: Prevent future APT service starts without stopping active transactions
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    masked: true
+  loop:
+    - apt-daily.service
+    - apt-daily-upgrade.service
+
+- name: Disable unattended upgrade shutdown service
+  ansible.builtin.systemd_service:
+    name: unattended-upgrades.service
+    enabled: false
+
+- name: Configure replacement-only package maintenance
+  ansible.builtin.copy:
+    src: 99-proxy-disposable
+    dest: /etc/apt/apt.conf.d/99-proxy-disposable
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure GRUB drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/default/grub.d
+    state: directory
+    mode: "0755"
+
+- name: Disable KHO for subsequent boots without pinning kernel
+  ansible.builtin.copy:
+    src: 98-proxy-kho.cfg
+    dest: /etc/default/grub.d/98-proxy-kho.cfg
+    owner: root
+    group: root
+    mode: "0644"
+  register: proxy_host_kho
+
+- name: Regenerate GRUB when boot policy changes
+  ansible.builtin.command: update-grub
+  when: proxy_host_kho.changed
+
+- name: Read effective boot parameters
+  ansible.builtin.command: cat /proc/cmdline
+  register: proxy_host_cmdline
+  changed_when: false
+
+- name: Require provisioning reboot to complete before proxy deployment
+  ansible.builtin.assert:
+    that: "'kho=off' in proxy_host_cmdline.stdout.split()"
+    fail_msg: >-
+      KHO boot policy is configured but not active. Perform one controlled reboot,
+      wait for SSH and cloud-init completion, then rerun deployment. No reboot is
+      scheduled by this playbook.

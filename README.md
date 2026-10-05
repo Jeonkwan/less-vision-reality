@@ -105,3 +105,5 @@ The **Deploy Xray Stack** workflow (`.github/workflows/deploy.yml`) applies the 
 - `ansible/` – Playbooks, inventory, variable definitions, and templates for the Xray deployment.
 - `.github/workflows/` – CI/CD automation including syntax checks and credential generation.
 - `specs.md` – Project specifications and documentation expectations.
+
+See [disposable proxy VM strategy](docs/disposable-proxy-vms.md) for replacement-based updates, boot readiness and validation.
