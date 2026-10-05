@@ -111,7 +111,7 @@ The selected deployment environment supplies `HOST_SSH_PRIVATE_KEY`, `XRAY_UUID`
 key/SNI settings. Supply host address/user/port using the workflow's inputs and
 variables; review `.github/workflows/deploy.yml` and [secrets guide](secrets-management.md).
 The managed host must be Ubuntu with Python 3 and active `kho=off`; the playbook
-verifies the host maintenance policy and deploys the verified binary.
+verifies the host maintenance policy and deploys the selected pinned runtime.
 No Ansible installation on the managed VM is needed for runner-controlled deployment.
 
 Validation of a live proxy requires matching client UUID, Reality public key,

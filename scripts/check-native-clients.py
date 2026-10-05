@@ -37,6 +37,10 @@ def main():
       for url in ['https://www.cloudflare.com/cdn-cgi/trace','https://www.gstatic.com/generate_204']:
        r=subprocess.run(['curl','--silent','--fail','--max-time','20','--noproxy','','--proxy',f'socks5h://127.0.0.1:{local}','--output','/dev/null','--write-out','%{http_code}',url],capture_output=True,text=True,timeout=25)
        print(name,core,host,url,'PASS' if r.returncode==0 else 'FAIL','HTTP',r.stdout,flush=True)
+       if r.returncode:
+        detail=r.stderr.strip()
+        for secret in values.values():detail=detail.replace(secret,'[redacted]')
+        print('Client request failure: curl exit',r.returncode,detail[:500],flush=True)
        assert r.returncode==0,'Authenticated HTTPS traffic failed'
     finally:
      process.terminate()
