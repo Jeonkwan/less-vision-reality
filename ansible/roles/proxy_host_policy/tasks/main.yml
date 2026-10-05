@@ -40,6 +40,41 @@
     group: root
     mode: "0644"
 
+- name: Inspect snap runtime presence
+  ansible.builtin.stat:
+    path: /usr/bin/snap
+  register: proxy_host_snap
+
+- name: Read snap auto-refresh policy
+  ansible.builtin.command: snap refresh --time
+  register: proxy_host_snap_time
+  changed_when: false
+  when: proxy_host_snap.stat.exists
+
+- name: Hold automatic snap refresh until host replacement
+  ansible.builtin.command: snap refresh --hold=forever
+  when:
+    - proxy_host_snap.stat.exists
+    - "'hold: forever' not in proxy_host_snap_time.stdout"
+
+- name: Inspect optional metadata timers
+  ansible.builtin.command: "systemctl show {{ item }} --property=LoadState --value"
+  register: proxy_host_optional_timers
+  changed_when: false
+  loop:
+    - fwupd-refresh.timer
+    - update-notifier-download.timer
+    - update-notifier-motd.timer
+
+- name: Disable optional metadata timers
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    enabled: false
+    masked: true
+    state: stopped
+  loop: "{{ proxy_host_optional_timers.results }}"
+  when: item.stdout != 'not-found'
+
 - name: Ensure GRUB drop-in directory exists
   ansible.builtin.file:
     path: /etc/default/grub.d
