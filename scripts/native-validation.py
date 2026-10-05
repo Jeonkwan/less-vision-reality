@@ -91,9 +91,12 @@ print('Docker log rotation PASS; files',len(files),'bytes',sum(p.stat().st_size 
    before=int(remote("sudo -n find /var/log/journal -name '*@*.journal' | wc -l"))
    print(remote("sudo -n systemd-run --wait --unit=xray-journal-probe --property=StandardOutput=journal --property=LogRateLimitIntervalSec=0 /usr/bin/python3 -c 'import os,base64; [print(base64.b64encode(os.urandom(768)).decode()) for i in range(45000)]'",timeout=150))
    code="""import pathlib,subprocess
+subprocess.run(['journalctl','--sync'],check=True)
 files=list(pathlib.Path('/var/log/journal').rglob('*.journal'))
 assert len([p for p in files if '@' in p.name])>BEFORE,'Journal did not rotate'
 size=sum(x.stat().st_size for x in files)
+print('Journal measurement; files',len(files),'bytes',size,flush=True)
+print(subprocess.check_output(['journalctl','--disk-usage'],text=True),flush=True)
 assert size<=115*1024**2,'Persistent journal exceeded budget and file slack'
 print('Journal rotation PASS; files',len(files),'bytes',size)
 print(subprocess.check_output(['journalctl','--disk-usage'],text=True))
