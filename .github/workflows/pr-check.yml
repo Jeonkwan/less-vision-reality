@@ -6,6 +6,9 @@ on:
 jobs:
   ansible-syntax:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mode: [native, docker]
 
     steps:
       - name: Check out repository
@@ -24,8 +27,15 @@ jobs:
       - name: Check native artifact integrity guards
         run: python scripts/tests/test_native.py
 
+      - name: Check runtime selection and isolation
+        run: python scripts/tests/test_runtime.py
+
+      - name: Validate shared configuration with reviewed official binaries
+        run: python scripts/tests/test_runtime_config.py
+
       - name: Run Ansible syntax check
         env:
+          XRAY_DEPLOYMENT_MODE: ${{ matrix.mode }}
           XRAY_UUID: 00000000-0000-0000-0000-000000000000
           XRAY_SHORT_IDS: deadbeefcafebabe
           XRAY_PRIVATE_KEY: FAKE_PRIVATE_KEY

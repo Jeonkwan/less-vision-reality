@@ -1,9 +1,41 @@
 ---
+- name: Prepare reviewed binary on controller for direct Ansible usage
+  when: xray_binary_source | length == 0
+  block:
+    - name: Create controller artifact directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: xray-controller-
+      delegate_to: localhost
+      become: false
+      register: xray_controller_directory
+
+    - name: Download verify and extract official binary on controller
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../scripts/prepare-native.py"
+          - --version
+          - "{{ xray_binary_version }}"
+          - --directory
+          - "{{ xray_controller_directory.path }}"
+          - --json
+      delegate_to: localhost
+      become: false
+      register: xray_controller_artifact
+      changed_when: false
+
+    - name: Select controller verified artifact
+      ansible.builtin.set_fact:
+        xray_binary_source: "{{ (xray_controller_artifact.stdout | from_json).path }}"
+        xray_binary_sha256: "{{ (xray_controller_artifact.stdout | from_json).sha256 }}"
+
 - name: Require verified runner artifact
   ansible.builtin.assert:
     that:
       - xray_binary_source | length > 0
       - xray_binary_sha256 is match('^[a-f0-9]{64}$')
+      - xray_binary_sha256 == xray_reviewed_binary_sha256[xray_binary_version]
 
 - name: Require supported binary architecture
   ansible.builtin.command: uname -m
@@ -88,63 +120,69 @@
   changed_when: false
   no_log: true
 
-- name: Activate validated binary
-  ansible.builtin.copy:
-    remote_src: true
-    src: "{{ xray_binary_path }}.candidate"
-    dest: "{{ xray_binary_path }}"
-    owner: root
-    group: root
-    mode: "0755"
-  notify: Restart Xray
-  when: xray_candidate_path != xray_binary_path
+- name: Activate native runtime with switch recovery
+  block:
+    - name: Stop opposite runtime only after candidate pair passed validation
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/switch-runtime.yml"
 
-- name: Enforce installed binary ownership and permissions
-  ansible.builtin.file:
-    path: "{{ xray_binary_path }}"
-    owner: root
-    group: root
-    mode: "0755"
+    - name: Activate validated binary
+      ansible.builtin.copy:
+        remote_src: true
+        src: "{{ xray_binary_path }}.candidate"
+        dest: "{{ xray_binary_path }}"
+        owner: root
+        group: root
+        mode: "0755"
+      register: xray_native_binary
+      when: xray_candidate_path != xray_binary_path
 
-- name: Activate validated configuration
-  ansible.builtin.copy:
-    remote_src: true
-    src: "{{ xray_config_path }}/config.candidate.json"
-    dest: "{{ xray_config_path }}/{{ xray_config_file }}"
-    owner: root
-    group: xray
-    mode: "0640"
-  no_log: true
-  notify: Restart Xray
+    - name: Enforce installed binary ownership and permissions
+      ansible.builtin.file:
+        path: "{{ xray_binary_path }}"
+        owner: root
+        group: root
+        mode: "0755"
 
-- name: Install systemd service
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/templates/xray.service.j2"
-    dest: /etc/systemd/system/xray.service
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Restart Xray
+    - name: Activate validated configuration
+      ansible.builtin.copy:
+        remote_src: true
+        src: "{{ xray_config_path }}/config.candidate.json"
+        dest: "{{ xray_config_path }}/{{ xray_config_file }}"
+        owner: root
+        group: xray
+        mode: "0640"
+      no_log: true
+      register: xray_native_config
 
-- name: Apply changed service
-  ansible.builtin.meta: flush_handlers
+    - name: Install systemd service
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/templates/xray.service.j2"
+        dest: /etc/systemd/system/xray.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: xray_native_unit
 
-- name: Enable and start Xray
-  ansible.builtin.systemd_service:
-    name: xray
-    enabled: true
-    state: started
-    daemon_reload: true
+    - name: Enable and reconcile native service only when changed
+      ansible.builtin.systemd_service:
+        name: xray
+        enabled: true
+        state: "{{ 'restarted' if (xray_native_binary.changed or xray_native_config.changed or xray_native_unit.changed) else 'started' }}"
+        daemon_reload: "{{ xray_native_unit.changed }}"
 
-- name: Wait for listener without fixed sleep
-  ansible.builtin.wait_for:
-    host: 127.0.0.1
-    port: "{{ xray_host_port }}"
-    timeout: 30
+    - name: Wait for listener without fixed sleep
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ xray_host_port }}"
+        timeout: 30
 
-- name: Require active service
-  ansible.builtin.command: systemctl is-active xray
-  changed_when: false
+    - name: Require active service
+      ansible.builtin.command: systemctl is-active xray
+      changed_when: false
+
+  rescue:
+    - name: Restore previous opposite runtime
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/restore-opposite.yml"
 
 - name: Remove staging files
   ansible.builtin.file:
@@ -165,3 +203,11 @@
     name: xray
     state: restarted
   tags: [never, xray_reload, xray_recreate]
+
+- name: Remove direct deployment controller artifact
+  ansible.builtin.file:
+    path: "{{ xray_controller_directory.path }}"
+    state: absent
+  delegate_to: localhost
+  become: false
+  when: xray_controller_directory is defined

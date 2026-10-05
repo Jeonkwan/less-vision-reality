@@ -1,4 +1,18 @@
 ---
+- name: Inspect Docker installation tools on minimal hosts
+  ansible.builtin.shell: command -v curl && command -v gpg && command -v lsb_release
+  register: docker_install_tools
+  changed_when: false
+  failed_when: false
+
+- name: Install missing Docker repository prerequisites
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, gpg, lsb-release]
+    state: present
+    update_cache: true
+    install_recommends: false
+  when: docker_install_tools.rc != 0
+
 - name: Ensure Docker apt keyring directory exists
   ansible.builtin.file:
     path: /etc/apt/keyrings
@@ -37,17 +51,14 @@
   when: docker_prereqs_repo.changed
 
 - name: Install Docker engine and Compose dependencies
-  ansible.builtin.shell: |
-    set -e
-    export DEBIAN_FRONTEND="noninteractive"
-    apt-get -y install --no-install-recommends \
-      docker-ce \
-      docker-ce-cli \
-      containerd.io \
-      docker-buildx-plugin \
-      docker-compose-plugin
-  args:
-    creates: /usr/bin/docker
+  ansible.builtin.apt:
+    name: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+    state: present
+    install_recommends: false
+
+- name: Require Docker Compose plugin
+  ansible.builtin.command: docker compose version
+  changed_when: false
 
 - name: Ensure Docker group contains deployment user
   ansible.builtin.user:

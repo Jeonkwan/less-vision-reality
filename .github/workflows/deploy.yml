@@ -44,6 +44,22 @@ on:
         required: false
         default: ""
         type: string
+      deployment_mode:
+        description: Selected Xray runtime
+        required: false
+        type: choice
+        default: native
+        options: [native, docker]
+      allow_runtime_switch:
+        description: Allow stopping the opposite managed runtime after candidate validation
+        required: false
+        type: boolean
+        default: false
+      container_image_version:
+        description: Reviewed pinned Docker image version (separate from native xray_version)
+        required: false
+        type: string
+        default: "25.10.15"
       xray_version:
         description: Reviewed pinned native Xray release
         required: false
@@ -96,6 +112,21 @@ on:
         required: false
         type: string
         default: ""
+      deployment_mode:
+        description: Selected Xray runtime
+        required: false
+        type: string
+        default: native
+      allow_runtime_switch:
+        description: Allow stopping the opposite managed runtime after candidate validation
+        required: false
+        type: boolean
+        default: false
+      container_image_version:
+        description: Reviewed pinned Docker image version (separate from native xray_version)
+        required: false
+        type: string
+        default: "25.10.15"
       xray_version:
         description: Reviewed pinned native Xray release
         required: false
@@ -164,6 +195,9 @@ jobs:
     needs: validate-environment
     environment: ${{ needs.validate-environment.outputs.environment }}
     env:
+      XRAY_DEPLOYMENT_MODE: ${{ inputs.deployment_mode || 'native' }}
+      XRAY_CONTAINER_IMAGE_VERSION: ${{ inputs.container_image_version || '25.10.15' }}
+      ALLOW_RUNTIME_SWITCH: ${{ inputs.allow_runtime_switch || false }}
       XRAY_VERSION: ${{ inputs.xray_version || '26.3.27' }}
       ANSIBLE_HOST_KEY_CHECKING: "false"
       XRAY_UUID: ${{ inputs.xray_uuid || github.event.inputs.xray_uuid || secrets.XRAY_UUID }}
@@ -178,6 +212,14 @@ jobs:
       REMOTE_SERVER_PORT: ${{ vars.REMOTE_SERVER_PORT }}
       ANSIBLE_INVENTORY_PATH: ansible/inventory.yml
     steps:
+      - name: Reject unsupported runtime and versions before deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$XRAY_DEPLOYMENT_MODE" in native|docker) ;; *) exit 1 ;; esac
+          case "$XRAY_VERSION" in 25.10.15|26.3.27) ;; *) exit 1 ;; esac
+          test "$XRAY_CONTAINER_IMAGE_VERSION" = 25.10.15
+
       - name: Check out repository
         uses: actions/checkout@v4
 
@@ -192,6 +234,7 @@ jobs:
           pip install ansible-core==2.16.19
 
       - name: Prepare verified native binary on runner
+        if: env.XRAY_DEPLOYMENT_MODE == 'native'
         run: python scripts/prepare-native.py --version "$XRAY_VERSION" --directory "$RUNNER_TEMP/xray" --github-env "$GITHUB_ENV"
 
       - name: Mask sensitive variables
@@ -270,7 +313,7 @@ jobs:
           if [ "${#LIMIT_ARGS[@]}" -gt 0 ]; then
             CMD+=("${LIMIT_ARGS[@]}")
           fi
-          CMD+=(ansible/site.yml)
+          CMD+=(ansible/site.yml -e "xray_allow_runtime_switch=${ALLOW_RUNTIME_SWITCH}")
 
           "${CMD[@]}"
 

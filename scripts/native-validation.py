@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Selected-host diagnostics and authenticated checks; no credentials in output."""
-import json,os,pathlib,socket,subprocess,tempfile,time
+import json,os,pathlib,shlex,socket,subprocess,tempfile,time
 
 def write_private_key(path,value):
  path.write_text(value.strip()+'\n')
  path.chmod(0o600)
 
 def main():
+ mode=os.environ.get('XRAY_DEPLOYMENT_MODE','native');assert mode in ['native','docker']
  target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf'];socket.inet_aton(address)
  if stage in ['suite','baseline','logs','recovery','reboot']:
   resolved={x[4][0] for x in socket.getaddrinfo(target+'.mokamaker.site',443,type=socket.SOCK_STREAM)}
@@ -39,9 +40,12 @@ def main():
    print(remote("uname -r; sudo -n cloud-init status; sudo -n systemctl show proxy-bootstrap.service -p Result; sudo -n journalctl -u proxy-bootstrap.service -n 8 --no-pager"));return
   if stage=='clients':clients();return
   if stage=='inspect':
-   code=pathlib.Path('scripts/validate-native-host.py').read_text()
+   code='import os\nos.environ[\"XRAY_DEPLOYMENT_MODE\"]='+repr(mode)+'\nos.environ[\"XRAY_REQUIRE_MINIMAL_HOST\"]='+repr(os.environ.get('XRAY_REQUIRE_MINIMAL_HOST','false'))+'\n'+pathlib.Path('scripts/validate-native-host.py').read_text()
    print(remote("sudo -n python3 - <<'PY'\n"+code+"\nPY"));clients();return
   def baseline():
+   if mode=='docker':
+    code="import json,pathlib,subprocess;d=json.loads(subprocess.check_output(['docker','inspect','xray'],text=True))[0];print(json.dumps(dict(mode='docker',Id=d['Id'],MainPID=str(d['State']['Pid']),StartedAt=d['State']['StartedAt'],RestartCount=d['RestartCount'],boot=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip())))"
+    return json.loads(remote("sudo -n python3 -c "+shlex.quote(code)))
    return json.loads(remote("sudo -n python3 - <<'PY'\nimport json,pathlib,subprocess\nx={line.split('=',1)[0]:line.split('=',1)[1] for line in subprocess.check_output(['systemctl','show','xray','-p','MainPID','-p','ExecMainStartTimestampMonotonic','-p','NRestarts'],text=True).splitlines()};x['boot']=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip();print(json.dumps(x))\nPY"))
   if stage in ['baseline','compare']:
    current=baseline()
@@ -51,15 +55,36 @@ def main():
   if stage in ['reboot','recovery']:
    before=baseline()
    if stage=='reboot':remote("sudo -n shutdown -r now",False,30)
-   else:remote('sudo -n systemctl kill --signal=SIGKILL xray')
+   else:remote('sudo -n systemctl kill --signal=SIGKILL xray' if mode=='native' else 'sudo -n kill -KILL '+before['MainPID'])
    for attempt in range(60):
     time.sleep(3)
     try:
-     now=baseline();active=remote('systemctl is-active xray',False)
+     now=baseline();active=remote('systemctl is-active xray' if mode=='native' else "sudo -n docker inspect --format '{{if .State.Running}}active{{end}}' xray",False)
      if active=='active' and now['MainPID']!='0' and (now['boot']!=before['boot'] if stage=='reboot' else now['MainPID']!=before['MainPID']):break
     except (RuntimeError,subprocess.TimeoutExpired):pass
    else:raise RuntimeError('Service did not recover')
    print('Recovery PASS',stage,before,now);clients();return
+  if stage=='logs' and mode=='docker':
+   # Inject stdout through the verified container process; do not require a shell
+   # or auxiliary utilities in the official runtime image.
+   code="""import json,pathlib,subprocess,os
+before=json.loads(subprocess.check_output(['docker','inspect','xray'],text=True))[0]
+assert before['Config']['Labels']['com.docker.compose.project']=='xray'
+assert before['Config']['Labels']['com.docker.compose.service']=='xray'
+assert before['Config']['Labels']['com.docker.compose.project.working_dir']=='/opt/xray'
+assert before['Config']['Labels']['com.docker.compose.project.config_files']=='/opt/xray/docker-compose.yml'
+assert before['HostConfig']['LogConfig']=={'Type':'json-file','Config':{'max-size':'10m','max-file':'3'}}
+with open('/proc/'+str(before['State']['Pid'])+'/fd/1','wb',buffering=0) as output:
+ for i in range(40000):output.write(os.urandom(768).hex().encode()+b'\\n')
+import time;time.sleep(3)
+after=json.loads(subprocess.check_output(['docker','inspect','xray'],text=True))[0]
+assert (before['Id'],before['State']['Pid'])==(after['Id'],after['State']['Pid'])
+log=pathlib.Path(after['LogPath']);files=list(log.parent.glob(log.name+'*'))
+assert len(files)>1 and len(files)<=3,'Docker logs did not rotate within max-file'
+assert sum(p.stat().st_size for p in files)<=31*1024**2,'Docker logs exceeded budget and slack'
+print('Docker log rotation PASS; files',len(files),'bytes',sum(p.stat().st_size for p in files))
+"""
+   print(remote("sudo -n python3 - <<'PY'\n"+code+"\nPY",timeout=150));clients();return
   if stage=='logs':
    before=int(remote("sudo -n find /var/log/journal -name '*@*.journal' | wc -l"))
    print(remote("sudo -n systemd-run --wait --unit=xray-journal-probe --property=StandardOutput=journal --property=LogRateLimitIntervalSec=0 /usr/bin/python3 -c 'import os,base64; [print(base64.b64encode(os.urandom(768)).decode()) for i in range(45000)]'",timeout=150))

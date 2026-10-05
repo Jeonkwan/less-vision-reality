@@ -1,8 +1,21 @@
-name: Native Xray validation
+name: Xray runtime validation
 run-name: 'Native validation: ${{ inputs.stage }} ${{ inputs.target }}'
 'on':
   workflow_dispatch:
     inputs:
+      deployment_mode:
+        type: choice
+        options: [native, docker]
+        default: native
+        required: true
+      require_minimal_host:
+        type: boolean
+        default: false
+        description: Assert Docker absent on a freshly provisioned native host
+      environment:
+        type: environment
+        required: true
+        description: Environment containing the selected node credentials
       target:
         type: choice
         options:
@@ -36,13 +49,15 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    environment: flatwhite
+    environment: ${{ inputs.environment }}
     timeout-minutes: 20
     env:
       SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
       XRAY_UUID: ${{ secrets.XRAY_UUID }}
       XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
       XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
+      XRAY_REQUIRE_MINIMAL_HOST: ${{ inputs.require_minimal_host }}
+      XRAY_DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
       TARGET: ${{ inputs.target }}
       STAGE: ${{ inputs.stage }}
       ADDRESS: ${{ inputs.address }}

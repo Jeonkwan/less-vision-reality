@@ -1,6 +1,2 @@
 ---
-- name: Restart Xray
-  ansible.builtin.systemd_service:
-    name: xray
-    state: restarted
-    daemon_reload: true
+# Native activation is reconciled in the recovery block after pair validation.

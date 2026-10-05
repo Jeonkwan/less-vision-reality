@@ -1,4 +1,8 @@
 ---
+- name: Require completed infrastructure bootstrap
+  ansible.builtin.command: test -f /var/lib/proxy-bootstrap/complete
+  changed_when: false
+
 - name: Verify supported Ubuntu host
   ansible.builtin.command: cat /etc/os-release
   register: proxy_host_os
