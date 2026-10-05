@@ -6,6 +6,9 @@ def main():
  target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf'];socket.inet_aton(address)
  with tempfile.TemporaryDirectory(prefix='native-ssh-') as tmp:
   p=pathlib.Path(tmp);key=p/'key';key.write_text(os.environ['SSH_PRIVATE_KEY']);key.chmod(0o600)
+  if stage=='identity':
+   pub=subprocess.check_output(['ssh-keygen','-y','-f',str(key)],text=True).strip()
+   print('PUBLIC_DEPLOYMENT_KEY',pub);return
   ssh=['ssh','-i',str(key),'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','ConnectTimeout=10','-o','StrictHostKeyChecking=accept-new','-o','UserKnownHostsFile='+str(p/'known_hosts'),'ubuntu@'+address]
   def remote(cmd,check=True,timeout=100):
    r=subprocess.run(ssh+[cmd],capture_output=True,text=True,timeout=timeout)
