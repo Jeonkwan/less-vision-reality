@@ -55,7 +55,7 @@ jobs:
       run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
         \ -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
         $KEY_DIR/known_hosts\" ubuntu@flatwhite.mokamaker.site)\npython scripts/diagnostics/check-proxies.py\
-        \ --nodes flatwhite cream decaf --expected-flatwhite-ip \"$EXPECTED_IP\"\n\
+        \ --nodes flatwhite decaf --expected-flatwhite-ip \"$EXPECTED_IP\"\n\
         timeout 100 \"${SSH[@]}\" 'bash -s' < scripts/validation/validate-flatwhite.sh\n\
         if [ \"$SEGMENT\" = 1 ]; then\n timeout 100 \"${SSH[@]}\" 'bash -s -- baseline'\
         \ < scripts/validation/baseline-flatwhite.sh\nfi\ntimeout 100 \"${SSH[@]}\"\

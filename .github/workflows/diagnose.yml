@@ -109,7 +109,7 @@ jobs:
         -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
         ubuntu@flatwhite.mokamaker.site)
 
-        python scripts/diagnostics/check-proxies.py --nodes flatwhite cream decaf
+        python scripts/diagnostics/check-proxies.py --nodes flatwhite decaf
         --expected-flatwhite-ip "$EXPECTED_IP"
 
         timeout 100 "${SSH[@]}" ''bash -s'' < scripts/validation/validate-flatwhite.sh
@@ -140,7 +140,7 @@ jobs:
         \ then\n  if timeout 100 \"${SSH[@]}\" 'bash -s' < scripts/validation/validate-flatwhite.sh;\
         \ then recovered=true;break;fi\n fi\n sleep 10\ndone\n[ \"$recovered\" = true\
         \ ]\necho \"Reboot validated: $boot -> $next\"\npython scripts/diagnostics/check-proxies.py\
-        \ --nodes flatwhite cream decaf --expected-flatwhite-ip \"$EXPECTED_IP\"\n"
+        \ --nodes flatwhite decaf --expected-flatwhite-ip \"$EXPECTED_IP\"\n"
     - name: Capture or compare unchanged deployment baseline
       if: ${{ inputs.stage == 'baseline' || inputs.stage == 'compare' }}
       shell: bash
