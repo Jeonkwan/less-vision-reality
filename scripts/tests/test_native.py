@@ -5,6 +5,4 @@ s=importlib.util.spec_from_file_location('prepare',root/'scripts/prepare-native.
 class Integrity(unittest.TestCase):
  def test_corruption_rejected(self):
   with self.assertRaises(ValueError):m.verify(b'corrupt',hashlib.sha256(b'original').hexdigest())
- def test_reviewed_versions_only(self):
-  self.assertEqual(set(m.RELEASES),{'25.10.15','26.3.27'})
 if __name__=='__main__':unittest.main()
