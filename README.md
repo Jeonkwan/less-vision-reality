@@ -2,7 +2,7 @@
 
 For agents and contributors: start with [development environment and dependencies](docs/development.md) and [AGENTS.md](AGENTS.md).
 
-This repository contains Ansible playbooks and supporting GitHub Actions workflows for deploying and operating an Xray Vision/Reality stack with Docker Compose. The automation draws inspiration from [`Jeonkwan/less-vision`](https://github.com/Jeonkwan/less-vision) and [`myelectronix/xtls-reality-docker`](https://github.com/myelectronix/xtls-reality-docker) while introducing templated inventories, idempotent handlers, and CI-driven credential tooling tailored to the requirements captured in [`specs.md`](specs.md).
+This repository contains Ansible playbooks and GitHub Actions workflows for deploying an official Xray VLESS/REALITY binary under systemd. Ansible and release downloads run on the controller; the server runs only Xray and the basic Ubuntu host services. See [`specs.md`](specs.md) for project requirements.
 
 ## Documentation Suite
 
@@ -13,22 +13,19 @@ This repository contains Ansible playbooks and supporting GitHub Actions workflo
 Refer back to [`specs.md`](specs.md) for the authoritative project goals and keep the documentation synchronized with ongoing automation changes.
 
 ## Features
-- Automated Ansible playbook (`ansible/site.yml`) that renders Xray configuration and applies Docker Compose updates.
+- Automated Ansible playbook (`ansible/site.yml`) that validates and installs native Xray with bounded journald logs.
 - Continuous integration workflow that validates Ansible syntax for pull requests.
 - Credentials workflow that can be triggered manually or automatically during pull requests to produce fresh UUID, short IDs, and Xray Reality key pairs for operators.
 - Deployment workflow that installs Ansible on a runner, hydrates sensitive variables from repository or environment secrets, and executes the playbook against the configured inventory.
 
 ## Generating Reality Credentials
-Use the **Generate Xray Credentials (manual)** workflow whenever you need disposable identifiers for a new deployment. When GitH
-ub Actions access is unavailable, run `./scripts/generate_xray_credentials.sh` locally—the wrapper launches throwaway Docker cont
-ainers so Docker is the only dependency:
+Use the **Generate Xray Credentials (manual)** workflow whenever you need disposable identifiers for a new deployment. When GitHub Actions access is unavailable, run `./scripts/generate_xray_credentials.sh` locally. That optional credential generator uses throwaway Docker containers on the controller; Docker is not required on the proxy server:
 
 ```bash
 SHORT_ID_COUNT=5 ./scripts/generate_xray_credentials.sh > credentials.env
 ```
 
-The script prints the UUID, comma-separated short IDs, and Reality key pair. Copy the secrets into Vault-encrypted inventory fil
-es or environment variables immediately, then securely delete the temporary file.
+The script prints the UUID, comma-separated short IDs, and Reality key pair. Store these securely, then delete the temporary file.
 
 Trigger the GitHub workflow with:
 
@@ -43,23 +40,23 @@ Behind the scenes the workflow pulls lightweight Alpine utility containers for e
 ## Ansible Usage
 1. Review or edit default variables in `ansible/group_vars/all.yml`.
 2. Update `ansible/inventory.yml` with your target hosts and overrides.
-3. Run `ansible-playbook -i ansible/inventory.yml ansible/site.yml` to apply the configuration.
-
-The generated Docker Compose definition pins the runtime to the official
-`ghcr.io/xtls/xray-core:25.10.15` image and mounts the rendered configuration
-directory into `/usr/local/etc/xray` inside the container. When upstream
-releases new versions, update the image tag in `ansible/group_vars/all.yml` and
-refresh the accompanying documentation so operators can track the change.
-
-After deployment the playbook waits 30 seconds and inspects the Xray container
-state. If Docker reports anything other than a running status the playbook
-captures the last 100 log lines before failing, so you have immediate context
-without shelling into the host. You can also confirm the configuration is valid
-manually with:
+3. Prepare a reviewed release on the controller, then supply the verified artifact to Ansible:
 
 ```bash
-docker compose -f /opt/xray/docker-compose.yml exec xray \
-  xray -test -confdir /usr/local/etc/xray
+python3 scripts/prepare-native.py --version 26.3.27 --directory /tmp/xray-release
+export XRAY_BINARY_PATH=/tmp/xray-release/xray
+export XRAY_BINARY_SHA256=$(sha256sum "$XRAY_BINARY_PATH" | cut -d' ' -f1)
+ansible-playbook -i ansible/inventory.yml ansible/site.yml
+```
+
+The default is reviewed stable Xray 26.3.27, with 25.10.15 retained for rollback.
+The playbook validates the candidate binary/configuration before activation,
+preserves an unchanged running service, and waits up to 30 seconds for the listener
+without a fixed sleep. You can validate the installed configuration on the server:
+
+```bash
+sudo /usr/local/bin/xray run -format json -test \
+  -config /usr/local/etc/xray/config.json
 ```
 
 Ensure the UUID, short IDs, and Reality keys you obtained from the credentials workflow are provided through inventory variables, vaulted secrets, or environment overrides before running the playbook. If you omit the optional Reality SNI value, the playbook now selects a random decoy from the predefined candidate list.
@@ -99,7 +96,7 @@ The **Deploy Xray Stack** workflow (`.github/workflows/deploy.yml`) applies the 
 
 6. The workflow validates that the requested environment exists before proceeding, installs Ansible, masks all secrets, configures SSH if a key is present, and then calls `ansible-playbook` with the runtime inventory path (either the generated file or the repository default). Any failures surface directly in the job log.
 
-7. The playbook preserves an unchanged Xray container and reconciles configuration through Docker Compose. It waits 30 seconds to inspect health and captures the last 100 log lines on failure.
+7. The workflow downloads and verifies the selected `xray_version` on the runner. The playbook validates the candidate configuration, installs Xray under systemd, and preserves an unchanged running process. Logs are available through `journalctl -u xray` with host-wide retention limits.
 
 8. On successful runs the workflow prints ready-to-use client connection details—including VLESS URIs, QR codes, and a Clash configuration snippet—so operators can distribute credentials without shelling into the remote host. Provide `XRAY_SNI` (or an inventory `xray_domain` override) to ensure the summary reflects the production domain instead of the placeholder.
 
