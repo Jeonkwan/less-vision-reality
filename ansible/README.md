@@ -84,3 +84,7 @@ Normal deployment uses Compose to reconcile the managed service, without the
 broad legacy cleanup role. An unchanged deployment preserves a healthy running
 container. The playbook does not schedule routine host reboots. Existing hosts'
 previously installed cron jobs are outside this fresh-instance change.
+
+## Disposable host policy
+
+The first role disables background APT timers and services, writes explicit periodic-update and automatic-reboot settings, and configures `kho=off` without pinning a kernel. Existing package transactions are not stopped. Proxy deployment requires the boot flag already active: complete the infrastructure provisioning reboot before running this playbook. This role never schedules a reboot. See [replacement strategy](../docs/disposable-proxy-vms.md).

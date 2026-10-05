@@ -14,12 +14,14 @@ run-name: 'Flat White disposable validation: ${{ inputs.stage }}'
         - reboot
         - monitor
         - inspect
+        - baseline
+        - compare
         default: ready
       expected_ip:
         description: Guarded Flat White static IP
         type: string
         required: true
-        default: 3.1.225.76
+        default: 54.179.39.30
 permissions:
   contents: read
 concurrency:
@@ -52,9 +54,10 @@ jobs:
         \ \\\n  --output sing-box.tar.gz\necho '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e\
         \  sing-box.tar.gz' | sha256sum --check\ntar -xzf sing-box.tar.gz\necho \"\
         $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
+      if: ${{ inputs.stage != 'ready' }}
     - name: Wait for guarded fresh Flat White bootstrap completion
       shell: bash
-      run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 3.1.225.76 ]\nkey_dir=$(mktemp\
+      run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 54.179.39.30 ]\nkey_dir=$(mktemp\
         \ -d \"$RUNNER_TEMP/flatwhite-ssh.XXXXXX\")\nchmod 700 \"$key_dir\"\nprintf\
         \ '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\nchmod 600 \"$key_dir/key\"\
         \necho \"KEY_DIR=$key_dir\" >> \"$GITHUB_ENV\"\nconnected=false\nfor attempt\
@@ -78,11 +81,7 @@ jobs:
         -n cloud-init status; sudo -n systemctl status proxy-bootstrap.service --no-pager
         || true; sudo -n journalctl -u proxy-bootstrap.service --no-pager -n 50; sudo
         -n tail -60 /var/log/cloud-init-output.log; sudo -n ls -la /var/lib/proxy-bootstrap;
-        sudo -n systemctl list-timers --all --no-pager; sudo -n systemctl show proxy-bootstrap.service
-        -p ConditionResult -p ActiveState -p SubState -p After -p Before; sudo -n
-        systemctl cat cloud-final.service cloud-init.target proxy-bootstrap.service;
-        sudo -n journalctl -b --no-pager --grep="Ordering cycle|proxy-bootstrap|deleted
-        to break" -n 35; sudo -n snap list; sudo -n snap refresh --time''
+        sudo -n systemctl list-timers --all --no-pager''
 
         '
     - name: Validate provisioning without package or kernel updates
@@ -142,6 +141,18 @@ jobs:
         \ then recovered=true;break;fi\n fi\n sleep 10\ndone\n[ \"$recovered\" = true\
         \ ]\necho \"Reboot validated: $boot -> $next\"\npython scripts/diagnostics/check-proxies.py\
         \ --nodes flatwhite cream decaf --expected-flatwhite-ip \"$EXPECTED_IP\"\n"
+    - name: Capture or compare unchanged deployment baseline
+      if: ${{ inputs.stage == 'baseline' || inputs.stage == 'compare' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@flatwhite.mokamaker.site)
+
+        timeout 100 "${SSH[@]}" "bash -s -- $STAGE" < scripts/validation/baseline-flatwhite.sh
+
+        '
     - name: Remove runner SSH credentials
       if: always()
       shell: bash

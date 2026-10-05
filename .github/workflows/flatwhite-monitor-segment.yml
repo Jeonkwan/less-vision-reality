@@ -38,7 +38,7 @@ jobs:
         $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
     - name: Establish guarded Flat White SSH
       shell: bash
-      run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 3.1.225.76 ]\nkey_dir=$(mktemp\
+      run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 54.179.39.30 ]\nkey_dir=$(mktemp\
         \ -d \"$RUNNER_TEMP/flatwhite-ssh.XXXXXX\")\nchmod 700 \"$key_dir\"\nprintf\
         \ '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\nchmod 600 \"$key_dir/key\"\
         \necho \"KEY_DIR=$key_dir\" >> \"$GITHUB_ENV\"\nconnected=false\nfor attempt\

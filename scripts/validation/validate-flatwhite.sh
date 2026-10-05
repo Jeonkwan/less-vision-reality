@@ -21,6 +21,12 @@ for unit in ['apt-daily.timer','apt-daily-upgrade.timer','apt-daily.service','ap
  if unit.endswith('.timer'):
   r=subprocess.run(['systemctl','is-active',unit],capture_output=True,text=True);assert r.stdout.strip()=='inactive',(unit,r.stdout)
 u=subprocess.run(['systemctl','is-enabled','unattended-upgrades.service'],capture_output=True,text=True);assert u.stdout.strip()=='disabled',u.stdout
+if pathlib.Path('/usr/bin/snap').exists():
+ assert 'hold: forever' in run('snap','refresh','--time'),'Snap automatic refresh not held'
+for unit in ['fwupd-refresh.timer','update-notifier-download.timer','update-notifier-motd.timer']:
+ r=subprocess.run(['systemctl','show',unit,'--property=LoadState','--value'],capture_output=True,text=True)
+ if r.stdout.strip()!='not-found':
+  r=subprocess.run(['systemctl','is-enabled',unit],capture_output=True,text=True);assert r.stdout.strip()=='masked',(unit,r.stdout)
 # Existing provisioning transactions must be finished by the readiness marker.
 for unit in ['apt-daily.service','apt-daily-upgrade.service']:
  r=subprocess.run(['systemctl','is-active',unit],capture_output=True,text=True);assert r.stdout.strip()=='inactive',(unit,r.stdout)
