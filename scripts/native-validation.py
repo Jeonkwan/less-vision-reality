@@ -9,6 +9,9 @@ def write_private_key(path,value):
 def main():
  target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf'];socket.inet_aton(address)
  assert target!='decaf' or stage=='clients','Decaf is protected; client checks only'
+ if stage in ['suite','baseline','logs','recovery','reboot']:
+  resolved={x[4][0] for x in socket.getaddrinfo(target+'.mokamaker.site',443,type=socket.SOCK_STREAM)}
+  assert resolved=={address},'Refusing host mutations: selected hostname does not resolve to the expected IP'
  if stage=='suite':
   for part in ['inspect','logs','recovery','reboot','inspect','baseline']:
    subprocess.run(['python3',__file__],env={**os.environ,'STAGE':part},check=True)
