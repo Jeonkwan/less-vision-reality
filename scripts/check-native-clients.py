@@ -4,6 +4,15 @@ import argparse,copy,hashlib,json,os,pathlib,socket,subprocess,tempfile,time
 
 def port():
  with socket.socket() as s:s.bind(('127.0.0.1',0));return s.getsockname()[1]
+
+def request_https(local,url,run=subprocess.run,sleep=time.sleep):
+ """Retry only transient network errors; persistent failures remain failures."""
+ for attempt in range(3):
+  result=run(['curl','--silent','--show-error','--fail','--max-time','20','--noproxy','','--proxy',f'socks5h://127.0.0.1:{local}','--output','/dev/null','--write-out','%{http_code}',url],capture_output=True,text=True,timeout=25)
+  if result.returncode not in {6,7,28,35,52,56,97} or attempt==2:return result
+  print('Client network retry',attempt+1,'curl exit',result.returncode,flush=True)
+  sleep(attempt+1)
+
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--nodes',nargs='+',choices=['cream','flatwhite','decaf','americano','latte'],required=True);p.add_argument('--address');a=p.parse_args()
  profiles=json.loads(pathlib.Path(__file__).with_name('client-profiles.json').read_text())
@@ -35,7 +44,7 @@ def main():
      assert ready,f'{core} client failed to start'
      for attempt in range(2):
       for url in ['https://www.cloudflare.com/cdn-cgi/trace','https://www.gstatic.com/generate_204']:
-       r=subprocess.run(['curl','--silent','--show-error','--fail','--max-time','20','--noproxy','','--proxy',f'socks5h://127.0.0.1:{local}','--output','/dev/null','--write-out','%{http_code}',url],capture_output=True,text=True,timeout=25)
+       r=request_https(local,url)
        print(name,core,host,url,'PASS' if r.returncode==0 else 'FAIL','HTTP',r.stdout,flush=True)
        if r.returncode:
         detail=r.stderr.strip()

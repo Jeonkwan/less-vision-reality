@@ -6,6 +6,11 @@ def journal_allocated_bytes(paths):
  """Match journald/du disk accounting, excluding sparse reserved file space."""
  return sum(path.stat().st_blocks*512 for path in paths)
 
+def journal_rotation_observed(before, paths):
+ """Rotation can add archives while retention deletes older ones."""
+ archives={path.name for path in paths if '@' in path.name and path.name.endswith('.journal')}
+ return bool(archives-set(before))
+
 def write_private_key(path,value):
  path.write_text(value.strip()+'\n')
  path.chmod(0o600)
@@ -95,12 +100,12 @@ print('Docker log rotation PASS; files',len(files),'bytes',sum(p.stat().st_size 
 """
    print(remote("sudo -n python3 - <<'PY'\n"+code+"\nPY",timeout=150));clients();return
   if stage=='logs':
-   before=int(remote("sudo -n find /var/log/journal -name '*@*.journal' | wc -l"))
+   before=json.loads(remote("sudo -n python3 -c 'import json,pathlib;print(json.dumps([p.name for p in pathlib.Path(\"/var/log/journal\").rglob(\"*@*.journal\")]))'"))
    print(remote("sudo -n systemd-run --wait --unit=xray-journal-probe --property=StandardOutput=journal --property=LogRateLimitIntervalSec=0 /usr/bin/python3 -c 'import os,base64; [print(base64.b64encode(os.urandom(768)).decode()) for i in range(45000)]'",timeout=150))
-   code="import pathlib,subprocess\n"+inspect.getsource(journal_allocated_bytes)+"""
+   code="import pathlib,subprocess\n"+inspect.getsource(journal_allocated_bytes)+inspect.getsource(journal_rotation_observed)+"""
 subprocess.run(['journalctl','--sync'],check=True)
 files=[p for p in pathlib.Path('/var/log/journal').rglob('*') if p.is_file() and p.name.endswith(('.journal','.journal~'))]
-assert len([p for p in files if '@' in p.name])>BEFORE,'Journal did not rotate'
+assert journal_rotation_observed(BEFORE,files),'Journal did not rotate'
 size=journal_allocated_bytes(files)
 print('Journal measurement; files',len(files),'allocated bytes',size,'logical bytes',sum(p.stat().st_size for p in files),flush=True)
 print(subprocess.check_output(['journalctl','--disk-usage'],text=True),flush=True)
@@ -108,7 +113,7 @@ assert size<=115*1024**2,'Persistent journal exceeded budget and file slack'
 print('Journal rotation PASS; files',len(files),'bytes',size)
 print(subprocess.check_output(['journalctl','--disk-usage'],text=True))
 """
-   code=code.replace('BEFORE',str(before))
+   code=code.replace('BEFORE',repr(before))
    print(remote("sudo -n python3 - <<'PY'\n"+code+"\nPY"));clients();return
   raise RuntimeError('Unknown stage')
 if __name__=='__main__':main()

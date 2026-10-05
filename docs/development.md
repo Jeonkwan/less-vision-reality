@@ -87,8 +87,10 @@ access. Neither is required to begin development.
 
 ## Proxy checks (from repository root)
 
-Run `python3 scripts/tests/test_native.py`, `python3 scripts/tests/test_runtime.py`
-and `python3 scripts/tests/test_runtime_config.py` (the latter downloads reviewed
+Run `python3 scripts/tests/test_native.py`, `python3 scripts/tests/test_runtime.py`,
+`python3 scripts/tests/test_journal_storage.py`,
+`python3 scripts/tests/test_client_requests.py` and
+`python3 scripts/tests/test_runtime_config.py` (the latter downloads reviewed
 archives to temporary controller directories). Repeat the syntax check below with
 `-e xray_deployment_mode=docker` as well as the default native selection.
 

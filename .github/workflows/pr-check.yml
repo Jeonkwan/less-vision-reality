@@ -33,6 +33,9 @@ jobs:
       - name: Check sparse journal disk accounting
         run: python scripts/tests/test_journal_storage.py
 
+      - name: Check client retry boundaries
+        run: python scripts/tests/test_client_requests.py
+
       - name: Validate shared configuration with reviewed official binaries
         run: python scripts/tests/test_runtime_config.py
 
