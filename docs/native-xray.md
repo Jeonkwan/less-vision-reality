@@ -1,5 +1,7 @@
 # Native Xray deployment
 
+For selectable native/Docker deployment, switching and the spare-validation plan, see [selectable runtime](selectable-xray-runtime.md).
+
 The managed basic Ubuntu VM needs SSH, Python3 and CA certificates already present
 on normal blueprints. Missing requirements are installed conditionally. Ansible,
 archive downloads, checksum verification, extraction and test clients run on the
@@ -38,7 +40,8 @@ Terraform operations support Cream/Flat White in zone A and Decaf in zone C.
 They validate exact target identity and resource scope, preserve
 other instances, and guard instance-only replacement so static IP/key/DNS remain.
 Destruction removes owned snapshots, an empty workspace and parks retired DNS.
-Both product PRs remain draft until explicitly approved for merge.
+The native migration PRs were originally drafts; subsequent merge and production
+status is recorded in [selectable validation](selectable-runtime-validation.md).
 
 See [validation evidence](native-xray-validation.md) for the fresh-instance client,
 lifecycle and retention tests, cutover, cleanup and measured deployment times.

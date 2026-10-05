@@ -1,5 +1,5 @@
 ---
-# Global variables for the native Xray deployment.
+# Shared settings; runtime paths and reviewed versions remain explicit.
 #
 # Sensitive values (UUIDs, short IDs, keys) should be injected via
 # Ansible Vault, `--extra-vars`, or environment variables. For example:
@@ -11,9 +11,24 @@
 #
 # When environment variables are provided they override the defaults below.
 
+xray_deployment_mode: "{{ lookup('env', 'XRAY_DEPLOYMENT_MODE') | default('native', true) }}"
+xray_allow_runtime_switch: false
+xray_binary_version: "{{ lookup('env', 'XRAY_VERSION') | default('26.3.27', true) }}"
+xray_container_image_version: "{{ lookup('env', 'XRAY_CONTAINER_IMAGE_VERSION') | default('26.3.27', true) }}"
+xray_container_image: "ghcr.io/xtls/xray-core:{{ xray_container_image_version }}"
 xray_service_name: xray
-xray_config_path: /usr/local/etc/xray
+xray_service_root: /opt/xray
+xray_compose_file: /opt/xray/docker-compose.yml
+xray_compose_project: xray
+xray_container_confdir: /usr/local/etc/xray
+xray_restart_policy: unless-stopped
+xray_compose_environment: {}
+xray_compose_networks: []
+xray_config_path: "{{ '/usr/local/etc/xray' if xray_deployment_mode == 'native' else '/opt/xray/config' }}"
 xray_config_file: config.json
+xray_reviewed_binary_sha256:
+  "25.10.15": 1d6b0fb6f2348683d59304c9f0bbf3611daa068527159b749374f12da252e78c
+  "26.3.27": 8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed
 xray_binary_path: /usr/local/bin/xray
 xray_binary_source: "{{ lookup('env', 'XRAY_BINARY_PATH') }}"
 xray_binary_sha256: "{{ lookup('env', 'XRAY_BINARY_SHA256') }}"

@@ -1,21 +1,4 @@
-- name: Verify Docker Compose availability
-  block:
-    - name: Ensure docker compose is available
-      ansible.builtin.command:
-        cmd: docker compose version
-      changed_when: false
-  rescue:
-    - name: Install Docker prerequisites
-      ansible.builtin.import_role:
-        name: docker_prereqs
-      vars:
-        docker_prereqs_user: "{{ xray_common_docker_user }}"
-
-    - name: Ensure docker compose is available
-      ansible.builtin.command:
-        cmd: docker compose version
-      changed_when: false
-
+---
 - name: Validate required Xray variables
   ansible.builtin.assert:
     that:
@@ -23,3 +6,11 @@
     fail_msg: "Variable '{{ item }}' must be provided for Xray deployment."
     success_msg: "Variable '{{ item }}' is defined."
   loop: "{{ xray_common_required_vars }}"
+
+- name: Reject placeholder deployment credentials
+  ansible.builtin.assert:
+    that:
+      - xray_reality_private_key != 'REPLACE_WITH_PRIVATE_KEY'
+      - xray_reality_public_key != 'REPLACE_WITH_PUBLIC_KEY'
+      - xray_short_ids | length > 0
+  no_log: true

@@ -1,5 +1,7 @@
 # Development environment
 
+For selectable native/Docker deployment, switching and the spare-validation plan, see [selectable runtime](selectable-xray-runtime.md).
+
 Use a Linux workstation or CI runner with Bash, Git, curl, OpenSSH client and
 Python 3.12 (including venv/pip). Install tools on the control host, not on the
 512 MB proxy VM. macOS can be used with equivalent tools; the documented checks
@@ -34,7 +36,7 @@ terraform version
 gh --version
 ```
 
-The current playbook uses `ansible.builtin` modules and deploys a checksum-verified native Xray binary under systemd. No extra Ansible Galaxy collection or Python Docker SDK is
+The selectable playbook uses `ansible.builtin` modules for native systemd or Docker Compose deployment. Native remains the default. No extra Ansible Galaxy collection or Python Docker SDK is
 required for this deployment. Python's standard library suffices for the
 bootstrap tests and diagnostic script. Do not install unrelated packages by default.
 
@@ -46,7 +48,7 @@ workspace-specific and is not part of a fresh repository clone.
 
 Clone `Jeonkwan/lightsail-proxy` (Terraform and OS bootstrap) and
 `Jeonkwan/less-vision-reality` (Ansible and Xray) as sibling directories. Changes
-currently use `feature/native-xray` in both repositories. Check remote branch
+currently use `feature/selectable-xray-runtime` in both repositories. Check remote branch
 availability before checkout; do not assume it remains the development branch
 forever. `Jeonkwan/gcp-proxy` is a separate optional infrastructure project;
 GCP credentials and tooling are not prerequisites for this Lightsail work.
@@ -56,8 +58,8 @@ mkdir -p proxy-workspace
 cd proxy-workspace
 gh repo clone Jeonkwan/lightsail-proxy
 gh repo clone Jeonkwan/less-vision-reality
-git -C lightsail-proxy switch feature/native-xray
-git -C less-vision-reality switch feature/native-xray
+git -C lightsail-proxy switch feature/selectable-xray-runtime
+git -C less-vision-reality switch feature/selectable-xray-runtime
 ```
 
 ## Authentication and configuration
@@ -85,6 +87,13 @@ access. Neither is required to begin development.
 
 ## Proxy checks (from repository root)
 
+Run `python3 scripts/tests/test_native.py`, `python3 scripts/tests/test_runtime.py`,
+`python3 scripts/tests/test_journal_storage.py`,
+`python3 scripts/tests/test_client_requests.py` and
+`python3 scripts/tests/test_runtime_config.py` (the latter downloads reviewed
+archives to temporary controller directories). Repeat the syntax check below with
+`-e xray_deployment_mode=docker` as well as the default native selection.
+
 ```bash
 XRAY_UUID=00000000-0000-0000-0000-000000000000 \
 XRAY_SHORT_IDS=deadbeefcafebabe \
@@ -104,7 +113,7 @@ The selected deployment environment supplies `HOST_SSH_PRIVATE_KEY`, `XRAY_UUID`
 key/SNI settings. Supply host address/user/port using the workflow's inputs and
 variables; review `.github/workflows/deploy.yml` and [secrets guide](secrets-management.md).
 The managed host must be Ubuntu with Python 3 and active `kho=off`; the playbook
-verifies the host maintenance policy and deploys the verified binary.
+verifies the host maintenance policy and deploys the selected pinned runtime.
 No Ansible installation on the managed VM is needed for runner-controlled deployment.
 
 Validation of a live proxy requires matching client UUID, Reality public key,
@@ -113,3 +122,10 @@ a listening TCP port alone is insufficient. The native validation workflow requi
 IP. It tests both supplied client transport profiles using runner-side clients.
 Runner success does not establish connectivity from a China Unicom client.
 Read [disposable VM strategy](disposable-proxy-vms.md) before live tests.
+
+See [runtime validation and current nodes](selectable-runtime-validation.md) for
+Cream replacement acceptance, historical spare evidence and cleanup scope.
+
+CI also runs `python3 scripts/tests/test_docker_config.py` with controller Docker.
+It tests the pinned image user and rejection/acceptance of restricted config permissions
+using generated in-memory keys and ephemeral containers without published ports.

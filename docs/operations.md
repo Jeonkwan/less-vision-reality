@@ -1,18 +1,21 @@
-# Native Xray operations
+# Xray operations
 
-See [native deployment](native-xray.md), [development setup](development.md) and
-[secrets management](secrets-management.md). The native feature uses runner-side
-Ansible and a checksum-verified release binary, without Docker on the VM.
+Start with [selectable runtime](selectable-xray-runtime.md) for exact deployment,
+switch and rollback commands, [development setup](development.md) and
+[secrets management](secrets-management.md). Ansible runs on the controller;
+`xray_deployment_mode=native|docker` defaults to native. Provision basic-vm first.
 
-Deploy via the feature branch's Deploy Xray Stack workflow with the selected
-GitHub environment, host address/user and reviewed xray_version. Provision the
-basic VM first and require the bootstrap marker and active kho=off. Credentials
-come from environment secrets. Use the Native Xray validation workflow with an
-explicit target and expected IP for authenticated sing-box and Clash/mihomo
-checks, inspection, reboot/failure recovery and journal rotation.
+Read native service state with `systemctl status xray` and bounded logs with
+`journalctl -u xray -n 80 --no-pager`. Read Docker state with
+`sudo docker inspect --format '{{json .State}}' xray` and bounded logs with
+`sudo docker logs --tail 80 xray`. Do not dump configuration or unredacted secrets.
+Use `diagnose.yml` with the selected mode, credential environment, target and
+expected IP for both client checks, inspection, baseline comparison, bounded-log
+rotation and explicitly authorized reboot/failure recovery.
 
-Read service state with `systemctl status xray` and bounded logs with
-`journalctl -u xray -n 80 --no-pager`. Do not dump config files or unredacted
-credentials. Standard logs are managed by journald, not a logrotate cron job.
-Unchanged deployment does not restart the service. Explicit stop/restart uses
-Ansible tags xray_down/xray_reload. Initial host support is Ubuntu x86-64/systemd.
+Normal unchanged deployment preserves the process/container and host boot.
+Lifecycle tags `xray_down`, `xray_reload` and `xray_recreate` honor the runtime
+selector. A deliberate switch validates candidates before stopping the verified
+opposite runtime; unrelated containers, networks and configuration are preserved.
+Native logs need no separate text-log/logrotate job. Initial platform support is
+Ubuntu x86-64/systemd. No automatic package or runtime updates are introduced.

@@ -1,6 +1,8 @@
 # Project specifications
 
-Deploy native official Xray VLESS/REALITY under systemd using runner-side Ansible.
+Deploy official Xray VLESS/REALITY using controller-side Ansible with a selectable
+native systemd (default) or pinned Docker Compose runtime. See
+[selectable runtime](docs/selectable-xray-runtime.md) for the shared contract.
 Checksum-pin reviewed release archives, stage and validate the candidate configuration
 before activation, restrict secret file access and preserve unchanged processes.
 Require completed infrastructure bootstrap and active boot policy. Use a dedicated

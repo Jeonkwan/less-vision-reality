@@ -24,7 +24,7 @@ PY
 )
 
 info "Generating Reality key pair..."
-XRAY_KEY_OUTPUT=$(docker run --rm ghcr.io/xtls/xray-core:25.10.15 xray x25519)
+XRAY_KEY_OUTPUT=$(docker run --rm ghcr.io/xtls/xray-core:26.3.27 x25519)
 XRAY_PRIVATE_KEY=$(printf '%s\n' "$XRAY_KEY_OUTPUT" | awk '/Private key|Private/ {print $NF; exit}')
 XRAY_PUBLIC_KEY=$(printf '%s\n' "$XRAY_KEY_OUTPUT" | awk '/Public key|Public|Password/ {print $NF; exit}')
 
