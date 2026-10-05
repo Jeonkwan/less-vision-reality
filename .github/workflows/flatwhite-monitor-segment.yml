@@ -1,0 +1,85 @@
+name: Flat White four-hour monitor segment
+'on':
+  workflow_call:
+    inputs:
+      expected_ip:
+        required: true
+        type: string
+      segment:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 250
+    environment: flatwhite
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+      XRAY_UUID: ${{ secrets.XRAY_UUID }}
+      XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+      XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
+      XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
+      EXPECTED_IP: ${{ inputs.expected_ip }}
+      SEGMENT: ${{ inputs.segment }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install pinned sing-box client
+      shell: bash
+      run: "set -euo pipefail\ncd \"$RUNNER_TEMP\"\ncurl --fail --silent --show-error\
+        \ --location --max-time 90 \\\n  https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz\
+        \ \\\n  --output sing-box.tar.gz\necho '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e\
+        \  sing-box.tar.gz' | sha256sum --check\ntar -xzf sing-box.tar.gz\necho \"\
+        $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
+    - name: Establish guarded Flat White SSH
+      shell: bash
+      run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 3.1.225.76 ]\nkey_dir=$(mktemp\
+        \ -d \"$RUNNER_TEMP/flatwhite-ssh.XXXXXX\")\nchmod 700 \"$key_dir\"\nprintf\
+        \ '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\nchmod 600 \"$key_dir/key\"\
+        \necho \"KEY_DIR=$key_dir\" >> \"$GITHUB_ENV\"\nconnected=false\nfor attempt\
+        \ in $(seq 1 90); do\n if python3 - <<'DNS'\nimport socket,os\nassert {x[4][0]\
+        \ for x in socket.getaddrinfo('flatwhite.mokamaker.site',22,type=socket.SOCK_STREAM)}=={os.environ['EXPECTED_IP']}\n\
+        DNS\n then\n  if timeout 25 ssh -i \"$key_dir/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
+        \ -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=\"\
+        $key_dir/known_hosts\" ubuntu@flatwhite.mokamaker.site 'test -f /var/lib/proxy-bootstrap/complete\
+        \ && grep -qw kho=off /proc/cmdline && uname -r'; then\n   connected=true;break\n\
+        \  fi\n fi\n echo \"Waiting for completed bootstrap/DNS/SSH, attempt $attempt\"\
+        \n sleep 10\ndone\n[ \"$connected\" = true ]\n"
+    - name: Initial health validation
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@flatwhite.mokamaker.site)
+
+        python scripts/diagnostics/check-proxies.py --nodes flatwhite cream decaf
+        --expected-flatwhite-ip "$EXPECTED_IP"
+
+        timeout 100 "${SSH[@]}" ''bash -s'' < scripts/validation/validate-flatwhite.sh
+
+        '
+    - name: Monitor every 30 minutes for four hours
+      shell: bash
+      run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
+        \ -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
+        $KEY_DIR/known_hosts\" ubuntu@flatwhite.mokamaker.site)\nboot=$(timeout 20\
+        \ \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\ncontainer=$(timeout\
+        \ 20 \"${SSH[@]}\" \"sudo -n docker inspect --format '{{.Id}} {{.State.StartedAt}}\
+        \ {{.RestartCount}}' xray\")\nstart=$SECONDS\nfor sample in $(seq 1 8); do\n\
+        \ target=$((start+sample*1800));delay=$((target-SECONDS))\n if [ \"$delay\"\
+        \ -gt 0 ]; then sleep \"$delay\";fi\n echo \"Segment $SEGMENT sample $sample\
+        \ at $(date -u +%FT%TZ)\"\n python scripts/diagnostics/check-proxies.py --nodes\
+        \ flatwhite --expected-flatwhite-ip \"$EXPECTED_IP\"\n timeout 100 \"${SSH[@]}\"\
+        \ 'bash -s' < scripts/validation/validate-flatwhite.sh\n [ \"$boot\" = \"\
+        $(timeout 20 \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\" ]\n [\
+        \ \"$container\" = \"$(timeout 20 \"${SSH[@]}\" \"sudo -n docker inspect --format\
+        \ '{{.Id}} {{.State.StartedAt}} {{.RestartCount}}' xray\")\" ]\ndone\n"
+    - name: Remove runner SSH credentials
+      if: always()
+      run: if [ -n "${KEY_DIR:-}" ]; then rm -rf "$KEY_DIR"; fi

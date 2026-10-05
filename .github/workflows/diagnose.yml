@@ -1,107 +1,169 @@
-name: Diagnose proxy connectivity
-run-name: "Read-only proxy diagnostics (${{ inputs.environment }})"
-
-on:
+name: Validate disposable Flat White
+run-name: 'Flat White disposable validation: ${{ inputs.stage }}'
+'on':
   workflow_dispatch:
     inputs:
-      environment:
-        description: GitHub environment holding existing Xray and SSH secrets
+      stage:
+        description: Validation stage
+        type: choice
         required: true
-        default: flatwhite
-        type: environment
-      ssh_user:
-        description: SSH username (blank uses environment variable or ubuntu)
-        required: false
-        default: ''
+        options:
+        - ready
+        - validate
+        - check
+        - reboot
+        - monitor
+        default: ready
+      expected_ip:
+        description: Guarded Flat White static IP
         type: string
-
+        required: true
+        default: 3.1.225.76
 permissions:
   contents: read
-
 concurrency:
-  group: proxy-diagnostics-${{ inputs.environment }}
+  group: flatwhite-disposable-${{ inputs.stage }}
   cancel-in-progress: false
-
 jobs:
   diagnose:
+    if: ${{ inputs.stage != 'monitor' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: ${{ inputs.environment }}
+    timeout-minutes: 30
+    environment: flatwhite
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
+      XRAY_UUID: ${{ secrets.XRAY_UUID }}
+      XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+      XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
+      XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
+      EXPECTED_IP: ${{ inputs.expected_ip }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install pinned sing-box client
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          curl --fail --silent --show-error --location --max-time 90 \
-            https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz \
-            --output sing-box.tar.gz
-          echo '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e  sing-box.tar.gz' | sha256sum --check
-          tar -xzf sing-box.tar.gz
-          echo "$RUNNER_TEMP/sing-box-1.11.4-linux-amd64" >> "$GITHUB_PATH"
-      - name: Inspect hosts over SSH without changing services
-        continue-on-error: true
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
-          SSH_USER_INPUT: ${{ inputs.ssh_user }}
-          SSH_USER_DEFAULT: ${{ vars.REMOTE_SERVER_USER }}
-          SSH_PORT_DEFAULT: ${{ vars.REMOTE_SERVER_PORT }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "$SSH_PRIVATE_KEY" ]; then
-            echo 'HOST_SSH_PRIVATE_KEY is not configured in the selected environment.'
-            exit 1
-          fi
-          key_dir=$(mktemp -d "$RUNNER_TEMP/proxy-ssh.XXXXXX")
-          trap 'rm -rf "$key_dir"' EXIT
-          chmod 700 "$key_dir"
-          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_dir/key"
-          chmod 600 "$key_dir/key"
-          ssh_user="${SSH_USER_INPUT:-${SSH_USER_DEFAULT:-ubuntu}}"
-          ssh_port="${SSH_PORT_DEFAULT:-22}"
-          for node in cream decaf; do
-            host="$node.mokamaker.site"
-            echo "::group::$node read-only host diagnostics"
-            # First-use host-key discovery, followed by mandatory host-key checking.
-            if ssh-keyscan -T 8 -p "$ssh_port" "$host" > "$key_dir/known_hosts" 2>/dev/null; then
-              timeout 100 ssh -i "$key_dir/key" -p "$ssh_port" \
-                -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 \
-                -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$key_dir/known_hosts" \
-                "$ssh_user@$host" 'bash -s' < scripts/diagnostics/host-readonly.sh || \
-                echo "SSH diagnostics failed for $node; client checks will still run."
-            else
-              echo "SSH port unreachable or host-key discovery failed for $node."
-            fi
-            echo '::endgroup::'
-          done
-      - name: Test authenticated REALITY connections from outside China
-        env:
-          XRAY_UUID: ${{ secrets.XRAY_UUID }}
-          XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
-          XRAY_SHORT_IDS: ${{ secrets.XRAY_SHORT_IDS }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for value in "$XRAY_UUID" "$XRAY_PUBLIC_KEY" "$XRAY_SHORT_IDS"; do
-            if [ -z "$value" ]; then
-              echo 'Required Xray secret is missing in selected environment.'
-              exit 1
-            fi
-            echo "::add-mask::$value"
-          done
-          python scripts/diagnostics/check-proxies.py | tee "$RUNNER_TEMP/client-diagnostics.txt"
-      - name: Publish client diagnostic summary
-        if: always()
-        shell: bash
-        run: |
-          if [ -f "$RUNNER_TEMP/client-diagnostics.txt" ]; then
-            printf '### Read-only client diagnostics\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
-            cat "$RUNNER_TEMP/client-diagnostics.txt" >> "$GITHUB_STEP_SUMMARY"
-            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
-          fi
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install pinned sing-box client
+      shell: bash
+      run: "set -euo pipefail\ncd \"$RUNNER_TEMP\"\ncurl --fail --silent --show-error\
+        \ --location --max-time 90 \\\n  https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz\
+        \ \\\n  --output sing-box.tar.gz\necho '0bb762ef286b36c2016d9107fc1f089be7a75f6d579b33f067d31e696c05927e\
+        \  sing-box.tar.gz' | sha256sum --check\ntar -xzf sing-box.tar.gz\necho \"\
+        $RUNNER_TEMP/sing-box-1.11.4-linux-amd64\" >> \"$GITHUB_PATH\"\n"
+    - name: Wait for guarded fresh Flat White bootstrap completion
+      shell: bash
+      run: "set -euo pipefail\n[ \"$EXPECTED_IP\" = 3.1.225.76 ]\nkey_dir=$(mktemp\
+        \ -d \"$RUNNER_TEMP/flatwhite-ssh.XXXXXX\")\nchmod 700 \"$key_dir\"\nprintf\
+        \ '%s\\n' \"$SSH_PRIVATE_KEY\" > \"$key_dir/key\"\nchmod 600 \"$key_dir/key\"\
+        \necho \"KEY_DIR=$key_dir\" >> \"$GITHUB_ENV\"\nconnected=false\nfor attempt\
+        \ in $(seq 1 90); do\n if python3 - <<'DNS'\nimport socket,os\nassert {x[4][0]\
+        \ for x in socket.getaddrinfo('flatwhite.mokamaker.site',22,type=socket.SOCK_STREAM)}=={os.environ['EXPECTED_IP']}\n\
+        DNS\n then\n  if timeout 25 ssh -i \"$key_dir/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
+        \ -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=\"\
+        $key_dir/known_hosts\" ubuntu@flatwhite.mokamaker.site 'test -f /var/lib/proxy-bootstrap/complete\
+        \ && grep -qw kho=off /proc/cmdline && uname -r'; then\n   connected=true;break\n\
+        \  fi\n fi\n echo \"Waiting for completed bootstrap/DNS/SSH, attempt $attempt\"\
+        \n sleep 10\ndone\n[ \"$connected\" = true ]\n"
+    - name: Validate provisioning without package or kernel updates
+      if: ${{ inputs.stage == 'ready' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@flatwhite.mokamaker.site)
+
+        timeout 100 "${SSH[@]}" ''POLICY_ONLY=1 bash -s'' < scripts/validation/validate-flatwhite.sh
+
+        "${SSH[@]}" ''sudo -n cloud-init status; sudo -n systemctl status proxy-bootstrap.service
+        --no-pager || true; sudo -n journalctl -u proxy-bootstrap.service --no-pager
+        -n 12''
+
+        '
+    - name: Validate authenticated proxy and host
+      if: ${{ inputs.stage != 'ready' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@flatwhite.mokamaker.site)
+
+        python scripts/diagnostics/check-proxies.py --nodes flatwhite cream decaf
+        --expected-flatwhite-ip "$EXPECTED_IP"
+
+        timeout 100 "${SSH[@]}" ''bash -s'' < scripts/validation/validate-flatwhite.sh
+
+        '
+    - name: Test log rotation with disposable container
+      if: ${{ inputs.stage == 'validate' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
+        ubuntu@flatwhite.mokamaker.site)
+
+        timeout 150 "${SSH[@]}" ''bash -s'' < scripts/validation/test-log-rotation.sh
+
+        '
+    - name: Controlled reboot and post-boot proxy validation
+      if: ${{ inputs.stage == 'reboot' }}
+      shell: bash
+      run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
+        \ -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
+        $KEY_DIR/known_hosts\" ubuntu@flatwhite.mokamaker.site)\nboot=$(\"${SSH[@]}\"\
+        \ 'cat /proc/sys/kernel/random/boot_id')\n\"${SSH[@]}\" \"sudo -n shutdown\
+        \ -r +1 'Validate disposable Flat White boot persistence'\"\nsleep 70\nrecovered=false\n\
+        for attempt in $(seq 1 60); do\n next=$(timeout 20 \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id'\
+        \ 2>/dev/null || true)\n if [ -n \"$next\" ] && [ \"$boot\" != \"$next\" ];\
+        \ then\n  if timeout 100 \"${SSH[@]}\" 'bash -s' < scripts/validation/validate-flatwhite.sh;\
+        \ then recovered=true;break;fi\n fi\n sleep 10\ndone\n[ \"$recovered\" = true\
+        \ ]\necho \"Reboot validated: $boot -> $next\"\npython scripts/diagnostics/check-proxies.py\
+        \ --nodes flatwhite cream decaf --expected-flatwhite-ip \"$EXPECTED_IP\"\n"
+    - name: Remove runner SSH credentials
+      if: always()
+      shell: bash
+      run: if [ -n "${KEY_DIR:-}" ]; then rm -rf "$KEY_DIR"; fi
+  monitor1:
+    uses: ./.github/workflows/flatwhite-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '1'
+    secrets: inherit
+    if: ${{ inputs.stage == 'monitor' }}
+  monitor2:
+    uses: ./.github/workflows/flatwhite-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '2'
+    secrets: inherit
+    needs: monitor1
+  monitor3:
+    uses: ./.github/workflows/flatwhite-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '3'
+    secrets: inherit
+    needs: monitor2
+  monitor4:
+    uses: ./.github/workflows/flatwhite-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '4'
+    secrets: inherit
+    needs: monitor3
+  monitor5:
+    uses: ./.github/workflows/flatwhite-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '5'
+    secrets: inherit
+    needs: monitor4
+  monitor6:
+    uses: ./.github/workflows/flatwhite-monitor-segment.yml
+    with:
+      expected_ip: ${{ inputs.expected_ip }}
+      segment: '6'
+    secrets: inherit
+    needs: monitor5
