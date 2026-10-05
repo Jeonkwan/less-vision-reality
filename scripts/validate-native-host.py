@@ -1,5 +1,5 @@
 """Execute on selected VM via SSH; output only non-secret evidence."""
-import pathlib,subprocess,json,shutil,os
+import pathlib,subprocess,json,shutil,os,hashlib
 run=lambda *a:subprocess.check_output(a,text=True).strip()
 assert pathlib.Path('/var/lib/proxy-bootstrap/complete').exists()
 assert 'kho=off' in pathlib.Path('/proc/cmdline').read_text().split()
@@ -20,6 +20,8 @@ for line in conf.splitlines():
   k,v=line.split('=',1);effective[k.strip()]=v.strip()
 assert all(effective.get(k)==v for k,v in {'Storage':'persistent','SystemMaxUse':'100M','RuntimeMaxUse':'32M','SystemMaxFileSize':'10M','MaxRetentionSec':'7day','ForwardToSyslog':'no'}.items()),str({k:effective.get(k) for k in ['Storage','SystemMaxUse','RuntimeMaxUse','SystemMaxFileSize','MaxRetentionSec','ForwardToSyslog']})
 assert 'hold: forever' in run('snap','refresh','--time') if shutil.which('snap') else True
-print(run('/usr/local/bin/xray','version'));print('Kernel',run('uname','-r'))
+print(run('/usr/local/bin/xray','version'))
+print('Xray binary SHA-256',hashlib.sha256(pathlib.Path('/usr/local/bin/xray').read_bytes()).hexdigest())
+print('Kernel',run('uname','-r'))
 print(run('systemctl','show','xray','-p','MainPID','-p','NRestarts','-p','ExecMainStartTimestampMonotonic'))
 print('Native host policy, permissions and bounded persistent journal PASS')
