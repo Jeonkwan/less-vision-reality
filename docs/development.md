@@ -123,7 +123,8 @@ IP. It tests both supplied client transport profiles using runner-side clients.
 Runner success does not establish connectivity from a China Unicom client.
 Read [disposable VM strategy](disposable-proxy-vms.md) before live tests.
 
-See [Americano/Latte validation and cleanup](selectable-runtime-validation.md) for the task scope and evidence.
+See [runtime validation and current nodes](selectable-runtime-validation.md) for
+Cream replacement acceptance, historical spare evidence and cleanup scope.
 
 CI also runs `python3 scripts/tests/test_docker_config.py` with controller Docker.
 It tests the pinned image user and rejection/acceptance of restricted config permissions
