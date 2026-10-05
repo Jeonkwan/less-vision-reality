@@ -52,18 +52,14 @@ jobs:
         \n sleep 10\ndone\n[ \"$connected\" = true ]\n"
     - name: Initial health validation
       shell: bash
-      run: 'set -euo pipefail
-
-        SSH=(ssh -i "$KEY_DIR/key" -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10
-        -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KEY_DIR/known_hosts"
-        ubuntu@flatwhite.mokamaker.site)
-
-        python scripts/diagnostics/check-proxies.py --nodes flatwhite cream decaf
-        --expected-flatwhite-ip "$EXPECTED_IP"
-
-        timeout 100 "${SSH[@]}" ''bash -s'' < scripts/validation/validate-flatwhite.sh
-
-        '
+      run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
+        \ -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"\
+        $KEY_DIR/known_hosts\" ubuntu@flatwhite.mokamaker.site)\npython scripts/diagnostics/check-proxies.py\
+        \ --nodes flatwhite cream decaf --expected-flatwhite-ip \"$EXPECTED_IP\"\n\
+        timeout 100 \"${SSH[@]}\" 'bash -s' < scripts/validation/validate-flatwhite.sh\n\
+        if [ \"$SEGMENT\" = 1 ]; then\n timeout 100 \"${SSH[@]}\" 'bash -s -- baseline'\
+        \ < scripts/validation/baseline-flatwhite.sh\nfi\ntimeout 100 \"${SSH[@]}\"\
+        \ 'bash -s -- compare' < scripts/validation/baseline-flatwhite.sh\n"
     - name: Monitor every 30 minutes for four hours
       shell: bash
       run: "set -euo pipefail\nSSH=(ssh -i \"$KEY_DIR/key\" -o BatchMode=yes -o IdentitiesOnly=yes\
@@ -76,10 +72,12 @@ jobs:
         \ -gt 0 ]; then sleep \"$delay\";fi\n echo \"Segment $SEGMENT sample $sample\
         \ at $(date -u +%FT%TZ)\"\n python scripts/diagnostics/check-proxies.py --nodes\
         \ flatwhite --expected-flatwhite-ip \"$EXPECTED_IP\"\n timeout 100 \"${SSH[@]}\"\
-        \ 'bash -s' < scripts/validation/validate-flatwhite.sh\n [ \"$boot\" = \"\
-        $(timeout 20 \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\" ]\n [\
-        \ \"$container\" = \"$(timeout 20 \"${SSH[@]}\" \"sudo -n docker inspect --format\
-        \ '{{.Id}} {{.State.StartedAt}} {{.RestartCount}}' xray\")\" ]\ndone\n"
+        \ 'bash -s' < scripts/validation/validate-flatwhite.sh\n timeout 100 \"${SSH[@]}\"\
+        \ 'bash -s -- compare' < scripts/validation/baseline-flatwhite.sh\n [ \"$boot\"\
+        \ = \"$(timeout 20 \"${SSH[@]}\" 'cat /proc/sys/kernel/random/boot_id')\"\
+        \ ]\n [ \"$container\" = \"$(timeout 20 \"${SSH[@]}\" \"sudo -n docker inspect\
+        \ --format '{{.Id}} {{.State.StartedAt}} {{.RestartCount}}' xray\")\" ]\n\
+        done\n"
     - name: Remove runner SSH credentials
       if: always()
       run: if [ -n "${KEY_DIR:-}" ]; then rm -rf "$KEY_DIR"; fi
