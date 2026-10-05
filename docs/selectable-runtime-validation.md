@@ -25,8 +25,8 @@ candidate rejection, recovery/reboot/log retention, switching/rollback, and peer
 clients. Individual mutation stages require hostname/IP binding. A fresh native host
 must additionally prove Docker absent; switched native hosts retain inactive packages.
 
-Status: preparation in progress; no successful live-validation claim yet. Evidence
-and exact resource cleanup results will be added after execution. Run commands and
+Status: live acceptance is running on the two selected spares. Final acceptance
+and exact resource cleanup results will be recorded after execution. Run commands and
 runtime limitations remain in [runtime contract](selectable-xray-runtime.md).
 
 If a failed attempt has already installed the other runtime, `resume_spare=true`
