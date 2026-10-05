@@ -109,7 +109,7 @@
 
 - name: Configure bounded persistent journals
   ansible.builtin.copy:
-    dest: /etc/systemd/journald.conf.d/50-proxy-retention.conf
+    dest: /etc/systemd/journald.conf.d/zz-proxy-retention.conf
     content: |
       [Journal]
       Storage=persistent
@@ -123,8 +123,14 @@
     mode: "0644"
   register: xray_journal_policy
 
+- name: Remove superseded retention drop-in
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d/50-proxy-retention.conf
+    state: absent
+  register: xray_journal_legacy
+
 - name: Apply journal policy only when changed
   ansible.builtin.systemd_service:
     name: systemd-journald
     state: restarted
-  when: xray_journal_policy.changed
+  when: xray_journal_policy.changed or xray_journal_legacy.changed
