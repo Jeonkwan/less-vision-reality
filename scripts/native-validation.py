@@ -16,6 +16,8 @@ def main():
    resolved={x[4][0] for x in socket.getaddrinfo(target+'.mokamaker.site',443,type=socket.SOCK_STREAM)}
    assert resolved=={address},'Hostname not yet resolving to expected instance'
    subprocess.run(['python3','scripts/check-native-clients.py','--nodes',target],check=True)
+  if stage=='bootstrap':
+   print(remote("uname -r; cat /proc/cmdline; sudo -n cloud-init status; sudo -n systemctl status proxy-bootstrap.service --no-pager || true; sudo -n journalctl -u proxy-bootstrap.service -n 35 --no-pager; sudo -n tail -40 /var/log/cloud-init-output.log"));return
   if stage=='ready':
    for attempt in range(90):
     # Commands with no stdout need a positive marker.
