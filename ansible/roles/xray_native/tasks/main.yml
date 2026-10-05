@@ -36,6 +36,16 @@
     group: xray
     mode: "0750"
 
+- name: Inspect installed binary checksum
+  ansible.builtin.stat:
+    path: "{{ xray_binary_path }}"
+    checksum_algorithm: sha256
+  register: xray_installed
+
+- name: Select existing verified binary or a staged upgrade
+  ansible.builtin.set_fact:
+    xray_candidate_path: "{{ xray_binary_path if (xray_installed.stat.checksum | default('')) == xray_binary_sha256 else xray_binary_path + '.candidate' }}"
+
 - name: Stage verified binary
   ansible.builtin.copy:
     src: "{{ xray_binary_source }}"
@@ -43,10 +53,11 @@
     owner: root
     group: root
     mode: "0755"
+  when: xray_candidate_path != xray_binary_path
 
 - name: Verify copied binary digest
   ansible.builtin.stat:
-    path: "{{ xray_binary_path }}.candidate"
+    path: "{{ xray_candidate_path }}"
     checksum_algorithm: sha256
   register: xray_candidate
 
@@ -61,13 +72,13 @@
     owner: root
     group: xray
     mode: "0640"
-    validate: "{{ xray_binary_path }}.candidate run -format json -test -config %s"
+    validate: "{{ xray_candidate_path }} run -format json -test -config %s"
   no_log: true
 
 - name: Validate candidate pair even when templates are unchanged
   ansible.builtin.command:
     argv:
-      - "{{ xray_binary_path }}.candidate"
+      - "{{ xray_candidate_path }}"
       - run
       - -format
       - json
@@ -86,6 +97,7 @@
     group: root
     mode: "0755"
   notify: Restart Xray
+  when: xray_candidate_path != xray_binary_path
 
 - name: Activate validated configuration
   ansible.builtin.copy:
