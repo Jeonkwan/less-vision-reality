@@ -88,6 +88,13 @@ def main():
             if (result.returncode != 0) != rejected:
                 print(sanitized(result.stdout+result.stderr)[-12000:], flush=True)
                 raise RuntimeError('Unexpected deployment result')
+            if rejected:
+                task = result.stdout.split('fatal:',1)[0].rsplit('TASK [',1)[-1].split(']',1)[0]
+                if mode == 'invalid': expected = 'Reject unsupported runtime before any host operation'
+                elif overrides: expected = 'Stage and validate configuration' if mode=='native' else 'Validate Docker candidate'
+                else: expected = 'Require explicit opt-in before switching'
+                assert expected in task, 'Deployment failed outside the intended rejection boundary'
+                print('Expected rejection boundary PASS:', task, flush=True)
             print('Deployment result PASS', flush=True)
 
         fixture = None

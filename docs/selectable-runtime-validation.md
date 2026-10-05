@@ -33,3 +33,27 @@ If a failed attempt has already installed the other runtime, `resume_spare=true`
 allows re-selection on the same disposable host and skips the fresh-native Docker-absence
 assertion. Retain the earlier fresh-host inspection evidence; resumed success does
 not replace that proof. It still executes the complete runtime lifecycle/switch suite.
+
+## Exact spare commands
+
+```bash
+# Registered infrastructure path; existing normal inputs still work unchanged.
+gh workflow run terraform-deploy.yml --repo Jeonkwan/lightsail-proxy \
+  --ref feature/selectable-xray-runtime -f workspace=americano \
+  -f spare_operation=create -f spare_target=americano
+# Repeat with workspace/target latte (zone C).
+gh workflow run diagnose.yml --repo Jeonkwan/less-vision-reality \
+  --ref feature/selectable-xray-runtime -f environment=flatwhite \
+  -f target=americano -f stage=validate-spare -f deployment_mode=native \
+  -f address=SPARE_IP -f validation_hostname=americano.SPARE_IP.sslip.io
+# Latte starts with deployment_mode=docker. Use your selected credential environment.
+gh workflow run terraform-deploy.yml --repo Jeonkwan/lightsail-proxy \
+  --ref feature/selectable-xray-runtime -f workspace=americano \
+  -f spare_operation=destroy -f spare_target=americano \
+  -f expected_instance=EXACT_RECORDED_INSTANCE_NAME
+```
+
+Capture the created instance/IP from the guarded create run, never infer it from a
+serving-node state file. Record sanitized acceptance/cleanup run links and recheck
+serving clients after cleanup. Temporary test names do not create DNS resources;
+existing Americano/Latte mokamaker.site DNS is preserved.
