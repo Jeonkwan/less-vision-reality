@@ -39,3 +39,5 @@ Prior native-only deployment evidence remains in
 [Decaf validation](docs/decaf-native-validation.md). Existing draft branches and
 immutable release tags remain unchanged. New work uses
 `feature/selectable-xray-runtime`, targeting `feature/native-xray`.
+
+See [Americano/Latte validation and cleanup](docs/selectable-runtime-validation.md) for the task scope and evidence.

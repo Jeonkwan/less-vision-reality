@@ -148,5 +148,105 @@
       "public_key": "0d36eb3f692463413322c6c08477f90296756fc27470c59be7a62e1b206000f7",
       "short_id": "dcfd36b6b7fe0009855cd894a0ca19b9ff15b1261b8b5350f95fe7b4b51bf1d6"
     }
+  },
+  "americano": {
+    "singbox": {
+      "type": "vless",
+      "tag": "americano",
+      "server": "americano.mokamaker.site",
+      "server_port": 443,
+      "uuid": "ENV_UUID",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tls": {
+        "enabled": true,
+        "server_name": "web.wechat.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "ENV_PUBLIC_KEY",
+          "short_id": "ENV_SHORT_ID"
+        }
+      }
+    },
+    "clash": {
+      "name": "americano",
+      "type": "vless",
+      "server": "americano.mokamaker.site",
+      "port": 443,
+      "uuid": "ENV_UUID",
+      "tls": true,
+      "network": "tcp",
+      "flow": "xtls-rprx-vision",
+      "udp": true,
+      "servername": "web.wechat.com",
+      "alpn": [
+        "h2",
+        "http/1.1"
+      ],
+      "reality-opts": {
+        "public-key": "ENV_PUBLIC_KEY",
+        "short-id": "ENV_SHORT_ID"
+      },
+      "client-fingerprint": "chrome"
+    },
+    "credential_fingerprints": {
+      "uuid": "6318c1ff6c6956f7e1eac7e31e9ef5d847a109dc9993c2db6a551c71bbb39d97",
+      "public_key": "0d36eb3f692463413322c6c08477f90296756fc27470c59be7a62e1b206000f7",
+      "short_id": "dcfd36b6b7fe0009855cd894a0ca19b9ff15b1261b8b5350f95fe7b4b51bf1d6"
+    }
+  },
+  "latte": {
+    "singbox": {
+      "type": "vless",
+      "tag": "latte",
+      "server": "latte.mokamaker.site",
+      "server_port": 443,
+      "uuid": "ENV_UUID",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tls": {
+        "enabled": true,
+        "server_name": "web.wechat.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "ENV_PUBLIC_KEY",
+          "short_id": "ENV_SHORT_ID"
+        }
+      }
+    },
+    "clash": {
+      "name": "latte",
+      "type": "vless",
+      "server": "latte.mokamaker.site",
+      "port": 443,
+      "uuid": "ENV_UUID",
+      "tls": true,
+      "network": "tcp",
+      "flow": "xtls-rprx-vision",
+      "udp": true,
+      "servername": "web.wechat.com",
+      "alpn": [
+        "h2",
+        "http/1.1"
+      ],
+      "reality-opts": {
+        "public-key": "ENV_PUBLIC_KEY",
+        "short-id": "ENV_SHORT_ID"
+      },
+      "client-fingerprint": "chrome"
+    },
+    "credential_fingerprints": {
+      "uuid": "6318c1ff6c6956f7e1eac7e31e9ef5d847a109dc9993c2db6a551c71bbb39d97",
+      "public_key": "0d36eb3f692463413322c6c08477f90296756fc27470c59be7a62e1b206000f7",
+      "short_id": "dcfd36b6b7fe0009855cd894a0ca19b9ff15b1261b8b5350f95fe7b4b51bf1d6"
+    }
   }
 }

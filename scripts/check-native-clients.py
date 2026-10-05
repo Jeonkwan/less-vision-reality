@@ -5,7 +5,7 @@ import argparse,copy,hashlib,json,os,pathlib,socket,subprocess,tempfile,time
 def port():
  with socket.socket() as s:s.bind(('127.0.0.1',0));return s.getsockname()[1]
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--nodes',nargs='+',choices=['cream','flatwhite','decaf'],required=True);p.add_argument('--address');a=p.parse_args()
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--nodes',nargs='+',choices=['cream','flatwhite','decaf','americano','latte'],required=True);p.add_argument('--address');a=p.parse_args()
  profiles=json.loads(pathlib.Path(__file__).with_name('client-profiles.json').read_text())
  values={'uuid':os.environ['XRAY_UUID'],'public_key':os.environ['XRAY_PUBLIC_KEY'],'short_id':os.environ['XRAY_SHORT_IDS'].split(',')[0].strip()}
  for name in a.nodes:

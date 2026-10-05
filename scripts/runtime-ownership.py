@@ -17,7 +17,7 @@ def inspect(root=pathlib.Path('/'), call=subprocess.run, docker=None):
             raise RuntimeError('Refusing unmanaged xray.service')
     else:
         result = call(['systemctl', 'show', 'xray', '-p', 'LoadState', '--value'],
-                      capture_output=True, text=True, check=True)
+                      capture_output=True, text=True, check=False)
         if result.stdout.strip() != 'not-found':
             raise RuntimeError('Refusing Xray unit outside managed path')
     exists = False

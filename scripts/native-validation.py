@@ -8,9 +8,11 @@ def write_private_key(path,value):
 
 def main():
  mode=os.environ.get('XRAY_DEPLOYMENT_MODE','native');assert mode in ['native','docker']
- target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf'];socket.inet_aton(address)
+ target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf','americano','latte'];socket.inet_aton(address)
+ hostname=os.environ.get('VALIDATION_HOSTNAME') or target+'.mokamaker.site'
+ assert hostname in [target+'.mokamaker.site',target+'.'+address+'.sslip.io'],'Unapproved test hostname'
  if stage in ['suite','baseline','logs','recovery','reboot']:
-  resolved={x[4][0] for x in socket.getaddrinfo(target+'.mokamaker.site',443,type=socket.SOCK_STREAM)}
+  resolved={x[4][0] for x in socket.getaddrinfo(hostname,443,type=socket.SOCK_STREAM)}
   assert resolved=={address},'Refusing host mutations: selected hostname does not resolve to the expected IP'
  if stage=='suite':
   for part in ['inspect','logs','recovery','reboot','inspect','baseline']:
@@ -25,9 +27,9 @@ def main():
    return r.stdout.strip()
   def clients():
    subprocess.run(['python3','scripts/check-native-clients.py','--nodes',target,'--address',address],check=True)
-   resolved={x[4][0] for x in socket.getaddrinfo(target+'.mokamaker.site',443,type=socket.SOCK_STREAM)}
+   resolved={x[4][0] for x in socket.getaddrinfo(hostname,443,type=socket.SOCK_STREAM)}
    assert resolved=={address},'Hostname not yet resolving to expected instance'
-   subprocess.run(['python3','scripts/check-native-clients.py','--nodes',target],check=True)
+   subprocess.run(['python3','scripts/check-native-clients.py','--nodes',target,'--address',hostname],check=True)
   if stage=='bootstrap':
    print(remote("uname -r; cat /proc/cmdline; sudo -n cloud-init status; sudo -n systemctl status proxy-bootstrap.service --no-pager || true; sudo -n journalctl -u proxy-bootstrap.service -n 35 --no-pager; sudo -n tail -40 /var/log/cloud-init-output.log"));return
   if stage=='ready':

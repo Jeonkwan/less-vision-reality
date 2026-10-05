@@ -120,3 +120,5 @@ a listening TCP port alone is insufficient. The native validation workflow requi
 IP. It tests both supplied client transport profiles using runner-side clients.
 Runner success does not establish connectivity from a China Unicom client.
 Read [disposable VM strategy](disposable-proxy-vms.md) before live tests.
+
+See [Americano/Latte validation and cleanup](selectable-runtime-validation.md) for the task scope and evidence.
