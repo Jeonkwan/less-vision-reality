@@ -30,7 +30,8 @@ AppArmor/seccomp confinement stays enabled. Ubuntu 24.04 crun/AppArmor stacking
 can deny TCP creation with the optional no-new-privileges flag (Ubuntu bug
 [2118824](https://bugs.launchpad.net/ubuntu/+source/libpod/+bug/2118824)); this mode
 omits that flag and does not alter global AppArmor policy. Validate actual TCP
-startup and zero effective/permitted/bounding capabilities, not only config parsing. Its private network namespace permits binding its container port 443
+startup and zero effective/permitted/bounding capabilities, not only config parsing.
+Its private network namespace permits binding its container port 443
 using an explicit namespace sysctl; bridge networking publishes TCP 443. The
 service does not use host networking or privileged containers. Configuration is
 `/opt/xray-podman/config/config.json`, root:65532 0640, with a read-only bind mount.
@@ -98,4 +99,5 @@ Runner transport checks do not establish complete iOS TUN/DNS/mobile behavior.
 After acceptance, destroy the exact recorded flatwhite instance and owned static
 IP/key/snapshots, delete its empty workspace, and park flatwhite.mokamaker.site at
 127.0.0.1. Keep shared credentials/backends. Merge and release need separate owner
-instructions. See the validation record for actual results and run links.
+instructions. See the [Podman validation record](podman-runtime-validation.md) for actual results
+and run links.

@@ -123,7 +123,7 @@ assert d['Id']==identity and d['Config']['Labels']['less-vision-reality.fixture'
             negatives()
             original=probe()['podman_id']
             short_ids=[value.strip() for value in os.environ['XRAY_SHORT_IDS'].split(',') if value.strip()]
-            extra='cafebabedeadbeef0';assert extra not in short_ids
+            extra='cafebabedeadbeef';assert extra not in short_ids
             deploy('podman',overrides={'xray_short_ids':short_ids+[extra]})
             assert probe()['podman_id']!=original,'Changed configuration did not recreate Podman container'
             stage('clients')
