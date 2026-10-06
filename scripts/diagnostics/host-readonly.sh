@@ -14,6 +14,11 @@ elif [ "$mode" = podman ]; then
   sudo -n systemctl show xray-podman -p ActiveState -p MainPID -p NRestarts -p ExecMainStartTimestampMonotonic || true
   sudo -n podman --remote=false inspect --format '{{json .State}}' xray-podman || true
   sudo -n podman --remote=false inspect --format 'AppArmor={{.AppArmorProfile}} Security={{json .HostConfig.SecurityOpt}} CapDrop={{json .HostConfig.CapDrop}} Sysctls={{json .HostConfig.Sysctls}}' xray-podman || true
+  sudo -n systemctl show docker -p ActiveState -p ExecMainStartTimestampMonotonic || true
+  ip -4 route show || true
+  sudo -n sysctl net.ipv4.ip_forward || true
+  sudo -n iptables -S || true
+  sudo -n iptables -t nat -S || true
 else
   sudo -n docker inspect --format '{{json .State}}' xray || true
 fi

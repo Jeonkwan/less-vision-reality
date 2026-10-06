@@ -88,6 +88,33 @@ class ThreeRuntimeSwitches(unittest.TestCase):
                               env={**os.environ,'ANSIBLE_LOCAL_TEMP':'/tmp/ansible-local',
                                    'ANSIBLE_REMOTE_TEMP':'/tmp/ansible-remote'})
 
+    def test_lifecycle_activation_cannot_bypass_validated_switch(self):
+        for previous in ['native','docker','podman']:
+            for selected in ['native','docker','podman']:
+                with self.subTest(previous=previous,selected=selected),tempfile.TemporaryDirectory() as tmp:
+                    directory=pathlib.Path(tmp);ansible=directory/'ansible'
+                    shutil.copytree(ROOT/'ansible',ansible)
+                    scripts=directory/'scripts';scripts.mkdir()
+                    (scripts/'runtime-ownership.py').write_text('print('+repr(json.dumps(state(previous)))+')\n')
+                    for role in ROLES:
+                        (ansible/f'roles/{role}/tasks/main.yml').write_text(
+                            '- ansible.builtin.debug:\n    msg: LIFECYCLE_EXECUTED\n  tags: [xray_reload, xray_recreate]\n')
+                    inventory=directory/'inventory.yml'
+                    inventory.write_text('all:\n  children:\n    xray_servers:\n      hosts:\n        localhost:\n          ansible_connection: local\n')
+                    for tag in ['xray_reload','xray_recreate']:
+                        result=subprocess.run(['ansible-playbook','-i',str(inventory),str(ansible/'site.yml'),
+                            '-e','xray_deployment_mode='+selected,'-e','ansible_become=false',
+                            '-e','xray_allow_runtime_switch=true','--tags',tag],capture_output=True,text=True,
+                            env={**os.environ,'ANSIBLE_LOCAL_TEMP':'/tmp/ansible-local',
+                                 'ANSIBLE_REMOTE_TEMP':'/tmp/ansible-remote'})
+                        if selected==previous:
+                            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                            self.assertIn('LIFECYCLE_EXECUTED',result.stdout)
+                        else:
+                            self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+                            self.assertIn('Lifecycle tags cannot switch runtimes',result.stdout)
+                            self.assertNotIn('LIFECYCLE_EXECUTED',result.stdout)
+
     def test_all_six_transitions_require_opt_in_before_roles(self):
         for previous in ['native','docker','podman']:
             for selected in ['native','docker','podman']:

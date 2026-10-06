@@ -56,6 +56,17 @@
         fail_msg: Opposite runtime exists; use xray_allow_runtime_switch=true for a deliberate switch.
       tags: [always]
 
+    - name: Require normal deployment for runtime switching with lifecycle tags
+      ansible.builtin.assert:
+        that:
+          - >-
+            not ((xray_deployment_mode != 'docker' and xray_existing.docker_running) or
+                 (xray_deployment_mode != 'native' and (xray_existing.native_running or xray_existing.native_enabled)) or
+                 (xray_deployment_mode != 'podman' and (xray_existing.podman_running | default(false) or xray_existing.podman_enabled | default(false))))
+        fail_msg: Lifecycle tags cannot switch runtimes; select the runtime through a normal deployment first.
+      when: "'xray_reload' in ansible_run_tags or 'xray_recreate' in ansible_run_tags"
+      tags: [always]
+
   roles:
     - role: proxy_host_policy
     - role: xray_common

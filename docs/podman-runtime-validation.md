@@ -39,7 +39,27 @@ Infrastructure Terraform/bootstrap/ownership checks also passed.
 
 ## Live acceptance
 
-Pending: [focused flatwhite run](https://github.com/Jeonkwan/less-vision-reality/actions/runs/37419346942).
+[Initial focused run](https://github.com/Jeonkwan/less-vision-reality/actions/runs/37419346942)
+passed fresh Docker-free footprint, host policy, supplied clients, unchanged
+identity/process/boot and invalid selector/config guards. It then correctly rejected
+an accidentally 17-character short ID in the harness's intended valid change.
+The test value was corrected to 16 characters; this was a harness input error,
+not a deployment defect. Earlier fresh-footprint evidence is retained. Live inspection recorded rootful
+Podman 4.9.3, Xray 26.3.27 and kernel `7.0.0-1012-aws`; Linux/amd64 image ID
+`695c08e5627556d1286f43ae3aeb370679d27b969ba0d5bb3dfe288746a5dde9`.
+Configuration ownership/permissions, UID/GID 65532, zero process capabilities,
+default AppArmor, inactive opposites and existing bounded host policy passed.
+
+[Resumed focused run](https://github.com/Jeonkwan/less-vision-reality/actions/runs/37420089923)
+passed changed deployment, all Podman lifecycle tags, SIGKILL recovery, actual
+container journald rotation (8 files, 56,766,464 allocated bytes), transitions to/from
+native and Docker, opt-in refusals and preservation of unrelated container fixtures.
+After final reboot Xray restarted, but client traffic failed; diagnosis is pending.
+Both tracked fixtures were cleaned. Remaining live gate: healthy post-reboot transport.
+
+Review also tightened lifecycle activation: restart/recreate tags cannot bypass
+normal candidate-validated switching, even with switch opt-in. Executable Ansible
+dispatcher tests cover all six cross-mode refusals and each same-mode acceptance.
 The harness checks fresh Docker-free Podman deployment; supplied sing-box 1.11.4
 and pinned mihomo 1.19.32 transport by IP/hostname; unchanged/changed deployment;
 invalid selector/candidate; Podman lifecycle, crash recovery and actual journald

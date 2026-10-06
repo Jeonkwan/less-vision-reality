@@ -73,7 +73,9 @@ Changed configuration or image replaces only the recorded owned container.
 `--tags xray_down` stops the selected service; `xray_reload` restarts it;
 `xray_recreate` recreates only the inspected existing Podman container with its
 reviewed image version and existing config. Lifecycle tags do not install packages
-or stage deployment candidates. Restore a stopped service through normal deployment.
+or stage deployment candidates. Activation tags refuse an opposite active/enabled
+runtime even with switch opt-in; switch through normal deployment first. Restore a
+stopped service through normal deployment.
 
 ## Focused validation and scope
 
