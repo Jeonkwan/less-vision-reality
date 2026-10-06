@@ -8,6 +8,7 @@ import os
 import pathlib
 import subprocess
 import tempfile
+import time
 
 from jinja2 import Environment
 
@@ -17,7 +18,7 @@ subprocess.run(podman+['pull',image],check=True,capture_output=True)
 data=json.loads(subprocess.check_output(podman+['image','inspect',image],text=True))[0]
 assert data['Config']['User']=='65532'
 assert data['Config']['Entrypoint']==['/usr/local/bin/xray']
-flags=['--network=none','--user=65532:65532','--security-opt=no-new-privileges','--cap-drop=all']
+flags=['--network=none','--user=65532:65532','--cap-drop=all']
 reported=subprocess.check_output(podman+['run','--rm']+flags+[image,'version'],text=True)
 assert reported.splitlines()[0].startswith('Xray '+image.rsplit(':',1)[1]+' ')
 private=subprocess.check_output(podman+['run','--rm']+flags+[image,'x25519'],text=True)
@@ -35,3 +36,22 @@ with tempfile.TemporaryDirectory(prefix='podman-permissions-') as directory:
             image,'run','-test','-config','/candidate.json'],capture_output=True,text=True)
         assert (result.returncode==0)==expected,'Pinned Podman image configuration permissions differ at '+oct(mode)
         print('Podman',image,'configuration',oct(mode),'expected acceptance',expected,'PASS')
+    # Configuration parsing does not prove that the unprivileged process can
+    # create its real TCP listener under the selected confinement policy.
+    mount='type=bind,src='+str(candidate)+',dst=/candidate.json,readonly'
+    container=subprocess.check_output(podman+['create']+flags+[
+        '--sysctl=net.ipv4.ip_unprivileged_port_start=0','--mount',mount,
+        image,'run','-config','/candidate.json'],text=True).strip()
+    try:
+        subprocess.run(podman+['start',container],check=True,capture_output=True)
+        for sample in range(2):
+            time.sleep(2)
+            state=json.loads(subprocess.check_output(podman+['inspect',container],text=True))[0]['State']
+            if not state['Running']:
+                logs=subprocess.check_output(podman+['logs',container],text=True,stderr=subprocess.STDOUT)
+                safe=logs.replace(private,'[generated key redacted]')
+                raise AssertionError('Podman real listener failed: '+safe[-2000:])
+        print('Podman',image,'unprivileged real TCP listener PASS')
+    finally:
+        subprocess.run(podman+['stop',container],capture_output=True)
+        subprocess.run(podman+['rm',container],check=True,capture_output=True)

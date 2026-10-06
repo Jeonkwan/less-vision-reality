@@ -59,7 +59,6 @@
       - --pull=never
       - --network=none
       - --user=65532:65532
-      - --security-opt=no-new-privileges
       - --cap-drop=all
       - --mount
       - type=bind,src=/opt/xray-podman/config.candidate.json,dst=/candidate.json,readonly
@@ -121,7 +120,7 @@
 
     - name: Decide whether the owned Podman container needs replacement
       ansible.builtin.set_fact:
-        xray_podman_replace: "{{ not (xray_existing.podman_exists | default(false)) or xray_podman_config.changed or (xray_existing.podman_image | default('')) != (xray_podman_image.stdout | from_json)[0].Id }}"
+        xray_podman_replace: "{{ not (xray_existing.podman_exists | default(false)) or (xray_existing.podman_spec | default('')) != 'v2' or xray_podman_config.changed or (xray_existing.podman_image | default('')) != (xray_podman_image.stdout | from_json)[0].Id }}"
 
     - name: Stop owned Podman service before replacing its container
       ansible.builtin.systemd_service:

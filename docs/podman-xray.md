@@ -25,8 +25,12 @@ recovery; an intentional systemctl stop does not restart the container. Disable
 the service when switching away so it stays stopped across host reboot. Native
 `xray.service`, Docker Compose `xray`, and Podman `xray-podman` are distinct.
 
-The Xray process runs as UID/GID 65532 with no new privileges and all capabilities
-dropped. Its private network namespace permits binding its container port 443
+The Xray process runs as UID/GID 65532 with all capabilities dropped. Default
+AppArmor/seccomp confinement stays enabled. Ubuntu 24.04 crun/AppArmor stacking
+can deny TCP creation with the optional no-new-privileges flag (Ubuntu bug
+[2118824](https://bugs.launchpad.net/ubuntu/+source/libpod/+bug/2118824)); this mode
+omits that flag and does not alter global AppArmor policy. Validate actual TCP
+startup and zero effective/permitted/bounding capabilities, not only config parsing. Its private network namespace permits binding its container port 443
 using an explicit namespace sysctl; bridge networking publishes TCP 443. The
 service does not use host networking or privileged containers. Configuration is
 `/opt/xray-podman/config/config.json`, root:65532 0640, with a read-only bind mount.

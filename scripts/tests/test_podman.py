@@ -33,10 +33,10 @@ class PodmanOwnership(unittest.TestCase):
         data = dict(Id='owned-podman', Image='reviewed-digest',
                     Config=dict(Image='ghcr.io/xtls/xray-core:26.3.27', User='65532:65532',
                                 Labels=copy.deepcopy(ownership.PODMAN_LABELS)),
-                    State=dict(Running=True),
+                    State=dict(Running=True), AppArmorProfile='containers-default-test',
                     Mounts=[dict(Source='/opt/xray-podman/config',
                                  Destination='/usr/local/etc/xray', RW=False)],
-                    HostConfig=dict(PortBindings={'443/tcp':[{'HostPort':'443'}]},
+                    HostConfig=dict(Privileged=False, NetworkMode='bridge', PortBindings={'443/tcp':[{'HostPort':'443'}]},
                                     LogConfig={'Type':'journald'}, RestartPolicy={'Name':'no'}))
         if mutate: mutate(data)
         def call(argv, **kwargs):

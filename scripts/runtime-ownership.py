@@ -53,7 +53,7 @@ def inspect_podman(root=pathlib.Path('/'), call=subprocess.run, podman=None, sup
         if result.stdout.strip() != 'not-found':
             raise RuntimeError('Refusing Podman unit outside managed path')
     state = dict(podman_unit_exists=unit.exists(), podman_exists=False, podman_running=False,
-                 podman_enabled=False, podman_id='', podman_image='', podman_image_ref='', podman_ports=[])
+                 podman_enabled=False, podman_id='', podman_image='', podman_image_ref='', podman_spec='', podman_ports=[])
     has_podman = podman if podman is not None else bool(shutil.which('podman'))
     if has_podman:
         info = json.loads(call(PODMAN + ['info', '--format', 'json'], capture_output=True,
@@ -76,6 +76,10 @@ def inspect_podman(root=pathlib.Path('/'), call=subprocess.run, podman=None, sup
                        m.get('Destination') == '/usr/local/etc/xray' and m.get('RW') is False
                        for m in data.get('Mounts', [])):
                 raise RuntimeError('Refusing unrelated Podman configuration')
+            if data['HostConfig'].get('Privileged') or data['HostConfig'].get('NetworkMode') != 'bridge':
+                raise RuntimeError('Refusing privileged or unexpected Podman networking')
+            if not data.get('AppArmorProfile','').startswith('containers-default-'):
+                raise RuntimeError('Refusing missing default Podman AppArmor confinement')
             bindings = data.get('HostConfig', {}).get('PortBindings') or {}
             ports = [int(b['HostPort']) for values in bindings.values() for b in (values or [])]
             if set(bindings) != {'443/tcp'} or ports != [443]:
@@ -83,7 +87,8 @@ def inspect_podman(root=pathlib.Path('/'), call=subprocess.run, podman=None, sup
             if data['HostConfig']['LogConfig']['Type'] != 'journald' or data['HostConfig']['RestartPolicy']['Name'] not in ['', 'no']:
                 raise RuntimeError('Refusing unexpected Podman supervision or logging')
             state.update(podman_exists=True, podman_running=data['State']['Running'],
-                         podman_id=data['Id'], podman_image=data['Image'], podman_image_ref=data['Config']['Image'], podman_ports=ports)
+                         podman_id=data['Id'], podman_image=data['Image'], podman_image_ref=data['Config']['Image'],
+                         podman_spec=labels.get('io.github.jeonkwan.less-vision-reality.spec','v1'), podman_ports=ports)
     elif unit.exists():
         raise RuntimeError('Managed Podman unit exists but Podman is unavailable')
     active = call(['systemctl', 'is-active', 'xray-podman'], capture_output=True, text=True).stdout.strip() == 'active'

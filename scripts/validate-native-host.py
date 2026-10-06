@@ -73,6 +73,10 @@ else:
  config=pathlib.Path('/opt/xray-podman/config/config.json').stat()
  assert config.st_mode & 0o777==0o640 and config.st_uid==0 and config.st_gid==65532
  assert int(run('ps','-o','uid=','-p',str(data['State']['Pid'])))==65532
+ status=dict(line.split(':',1) for line in pathlib.Path('/proc/'+str(data['State']['Pid'])+'/status').read_text().splitlines() if ':' in line)
+ assert all(int(status[field].strip(),16)==0 for field in ['CapEff','CapPrm','CapBnd'])
+ assert data['AppArmorProfile'].startswith('containers-default-')
+ assert not data['HostConfig']['Privileged']
  print('Podman',info['version']['Version'],'container',data['Id'],'image digest',data['Image'])
 for unit in ['apt-daily.timer','apt-daily-upgrade.timer','apt-daily.service','apt-daily-upgrade.service']:
  r=subprocess.run(['systemctl','is-enabled',unit],text=True,capture_output=True);assert r.stdout.strip()=='masked'
