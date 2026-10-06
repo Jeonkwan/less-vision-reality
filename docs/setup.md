@@ -8,7 +8,9 @@ Ansible after bootstrap completes and `kho=off` is active. See
 Native mode needs SSH, Python3 and CA certificates on the VM; release downloads and
 verification run on the controller. Docker mode additionally needs outbound package
 repository/GHCR access and installs its missing curl/GPG/repository tools, Engine and
-Compose plugin. Neither mode installs Ansible or a Docker SDK on the VM. Allow the
+Compose plugin. Podman mode installs distribution Podman plus netavark/aardvark-dns and uses a
+regular systemd supervisor without Compose. No mode installs Ansible or a Docker SDK
+on the VM. See [Podman setup](podman-xray.md). Allow the
 configured `xray_host_port` (443 by default) in the Lightsail firewall.
 
 Define target hosts under `xray_servers`. Supply credentials securely through Vault,

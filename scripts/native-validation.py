@@ -42,6 +42,9 @@ def main():
    resolved={x[4][0] for x in socket.getaddrinfo(hostname,443,type=socket.SOCK_STREAM)}
    assert resolved=={address},'Hostname not yet resolving to expected instance'
    subprocess.run(['python3','scripts/check-native-clients.py','--nodes',target,'--address',hostname],check=True)
+  if stage=='status':
+   script=pathlib.Path('scripts/diagnostics/host-readonly.sh').read_text()
+   print(remote('XRAY_DEPLOYMENT_MODE='+shlex.quote(mode)+" bash -s <<'READONLY'\n"+script+'\nREADONLY'));return
   if stage=='bootstrap':
    print(remote("uname -r; cat /proc/cmdline; sudo -n cloud-init status; sudo -n systemctl status proxy-bootstrap.service --no-pager || true; sudo -n journalctl -u proxy-bootstrap.service -n 35 --no-pager; sudo -n tail -40 /var/log/cloud-init-output.log"));return
   if stage=='ready':

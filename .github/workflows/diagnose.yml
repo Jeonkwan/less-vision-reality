@@ -42,6 +42,7 @@ run-name: 'Runtime validation: ${{ inputs.stage }} ${{ inputs.target }} ${{ inpu
         - bootstrap
         - clients
         - inspect
+        - status
         - baseline
         - compare
         - reboot
