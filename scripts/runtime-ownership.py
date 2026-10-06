@@ -2,6 +2,7 @@
 """Read-only ownership checks; refuse ambiguous Xray resources, never discover by port."""
 import json
 import argparse
+import configparser
 import os
 import pathlib
 import shutil
@@ -31,7 +32,20 @@ def inspect_podman(root=pathlib.Path('/'), call=subprocess.run, podman=None, sup
                     'Restart=always', 'WantedBy=multi-user.target']
         if not marker.exists() or not all(line in unit.read_text().splitlines() for line in required):
             raise RuntimeError('Refusing unmanaged xray-podman.service')
-        if any(unit.with_name('xray-podman.service.d').glob('*.conf')):
+        definition = configparser.ConfigParser(interpolation=None)
+        definition.optionxform = str
+        try:
+            definition.read_string(unit.read_text())
+        except configparser.Error as error:
+            raise RuntimeError('Refusing ambiguous Podman service definition') from error
+        allowed = {'Type', 'ExecStart', 'ExecStop', 'Restart', 'RestartSec',
+                   'TimeoutStopSec', 'KillMode', 'StandardOutput', 'StandardError', 'SyslogIdentifier'}
+        if set(definition['Service']) != allowed:
+            raise RuntimeError('Refusing unmanaged Podman service directives')
+        if any(list((root / path).glob('*.conf')) for path in [
+                'etc/systemd/system/xray-podman.service.d',
+                'run/systemd/system/xray-podman.service.d',
+                'usr/lib/systemd/system/xray-podman.service.d']):
             raise RuntimeError('Refusing unmanaged Podman service overrides')
     else:
         result = call(['systemctl', 'show', 'xray-podman', '-p', 'LoadState', '--value'],

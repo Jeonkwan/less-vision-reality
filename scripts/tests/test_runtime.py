@@ -18,7 +18,7 @@ spec.loader.exec_module(module)
 
 
 class Ownership(unittest.TestCase):
-    def inspect(self, labels=None, source='/opt/xray/config', daemon_fails=False):
+    def inspect(self, labels=None, source='/opt/xray/config', daemon_fails=False, foreign_port=None):
         labels = labels if labels is not None else {
             'com.docker.compose.project': 'xray', 'com.docker.compose.service': 'xray',
             'com.docker.compose.project.working_dir': '/opt/xray',
@@ -30,11 +30,17 @@ class Ownership(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, argv)
             if argv[:2] == ['systemctl', 'show']: out = 'not-found\n'
             elif argv[:3] == ['docker', 'container', 'ls']: out = 'owned-id\n'
+            elif argv == ['docker', 'ps', '-q']: out = 'unrelated-id\n' if foreign_port else ''
+            elif argv == ['docker', 'inspect', 'unrelated-id']:
+                out = json.dumps([{'HostConfig':{'PortBindings':{'443/tcp':[{'HostPort':str(foreign_port)}]}}}])
             elif argv[:2] == ['docker', 'inspect']: out = json.dumps(data)
             else: out = ''
             return subprocess.CompletedProcess(argv, 0, out, '')
         with tempfile.TemporaryDirectory() as tmp:
-            return module.inspect(pathlib.Path(tmp), call, docker=True)
+            return module.inspect(pathlib.Path(tmp), call, docker=True, podman=False)
+
+    def test_nat_published_port_without_listener_is_reported(self):
+        self.assertEqual(self.inspect(foreign_port=443)['foreign_ports'],[443])
 
     def test_legacy_compose_ownership_is_recognized(self):
         self.assertEqual(self.inspect()['docker_id'], 'owned-id')
@@ -57,7 +63,7 @@ class Ownership(unittest.TestCase):
                 raise subprocess.CalledProcessError(rc,argv)
             return subprocess.CompletedProcess(argv,rc,out,'')
         with tempfile.TemporaryDirectory() as tmp:
-            data=module.inspect(pathlib.Path(tmp),call,docker=False)
+            data=module.inspect(pathlib.Path(tmp),call,docker=False,podman=False)
             self.assertFalse(data['native_exists'])
             self.assertFalse(data['native_running'])
 
@@ -66,7 +72,7 @@ class Ownership(unittest.TestCase):
             root = pathlib.Path(tmp); unit = root / 'etc/systemd/system/xray.service'
             unit.parent.mkdir(parents=True); unit.write_text('[Service]\nUser=root\n')
             with self.assertRaisesRegex(RuntimeError, 'unmanaged xray.service'):
-                module.inspect(root, docker=False)
+                module.inspect(root, docker=False, podman=False)
 
     def test_unmarked_docker_directory_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -74,7 +80,7 @@ class Ownership(unittest.TestCase):
             def call(argv, **kwargs):
                 return subprocess.CompletedProcess(argv, 0, 'not-found' if argv[1]=='show' else '', '')
             with self.assertRaisesRegex(RuntimeError, 'unmarked'):
-                module.inspect(root, call, docker=False)
+                module.inspect(root, call, docker=False, podman=False)
 
 
 class Selector(unittest.TestCase):
