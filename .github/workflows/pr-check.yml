@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        mode: [native, docker]
+        mode: [native, docker, podman]
 
     steps:
       - name: Check out repository
@@ -28,7 +28,9 @@ jobs:
         run: python scripts/tests/test_native.py
 
       - name: Check runtime selection and isolation
-        run: python scripts/tests/test_runtime.py
+        run: |
+          python scripts/tests/test_runtime.py
+          python scripts/tests/test_podman.py
 
       - name: Check sparse journal disk accounting
         run: python scripts/tests/test_journal_storage.py
@@ -59,3 +61,15 @@ jobs:
             -i ansible/inventory.yml \
             ansible/site.yml \
             --syntax-check
+
+      - name: Install rootful Podman for affected image checks
+        if: matrix.mode == 'podman'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y podman netavark aardvark-dns
+
+      - name: Validate restricted configuration with reviewed Podman images
+        if: matrix.mode == 'podman'
+        run: |
+          python scripts/tests/test_podman_config.py
+          XRAY_CONTAINER_IMAGE_VERSION=25.10.15 python scripts/tests/test_podman_config.py

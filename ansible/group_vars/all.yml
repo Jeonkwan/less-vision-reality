@@ -24,7 +24,9 @@ xray_container_confdir: /usr/local/etc/xray
 xray_restart_policy: unless-stopped
 xray_compose_environment: {}
 xray_compose_networks: []
-xray_config_path: "{{ '/usr/local/etc/xray' if xray_deployment_mode == 'native' else '/opt/xray/config' }}"
+xray_podman_root: /opt/xray-podman
+xray_podman_service: xray-podman
+xray_config_path: "{{ '/usr/local/etc/xray' if xray_deployment_mode == 'native' else ('/opt/xray-podman/config' if xray_deployment_mode == 'podman' else '/opt/xray/config') }}"
 xray_config_file: config.json
 xray_reviewed_binary_sha256:
   "25.10.15": 1d6b0fb6f2348683d59304c9f0bbf3611daa068527159b749374f12da252e78c

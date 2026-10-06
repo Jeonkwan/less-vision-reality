@@ -16,7 +16,7 @@ def write_private_key(path,value):
  path.chmod(0o600)
 
 def main():
- mode=os.environ.get('XRAY_DEPLOYMENT_MODE','native');assert mode in ['native','docker']
+ mode=os.environ.get('XRAY_DEPLOYMENT_MODE','native');assert mode in ['native','docker','podman']
  target=os.environ['TARGET'];stage=os.environ['STAGE'];address=os.environ['ADDRESS'];assert target in ['cream','flatwhite','decaf','americano','latte'];socket.inet_aton(address)
  hostname=os.environ.get('VALIDATION_HOSTNAME') or target+'.mokamaker.site'
  assert hostname in [target+'.mokamaker.site',target+'.'+address+'.sslip.io'],'Unapproved test hostname'
@@ -42,6 +42,9 @@ def main():
    resolved={x[4][0] for x in socket.getaddrinfo(hostname,443,type=socket.SOCK_STREAM)}
    assert resolved=={address},'Hostname not yet resolving to expected instance'
    subprocess.run(['python3','scripts/check-native-clients.py','--nodes',target,'--address',hostname],check=True)
+  if stage=='status':
+   script=pathlib.Path('scripts/diagnostics/host-readonly.sh').read_text()
+   print(remote('XRAY_DEPLOYMENT_MODE='+shlex.quote(mode)+" bash -s <<'READONLY'\n"+script+'\nREADONLY'));return
   if stage=='bootstrap':
    print(remote("uname -r; cat /proc/cmdline; sudo -n cloud-init status; sudo -n systemctl status proxy-bootstrap.service --no-pager || true; sudo -n journalctl -u proxy-bootstrap.service -n 35 --no-pager; sudo -n tail -40 /var/log/cloud-init-output.log"));return
   if stage=='ready':
@@ -57,6 +60,9 @@ def main():
    code='import os\nos.environ[\"XRAY_DEPLOYMENT_MODE\"]='+repr(mode)+'\nos.environ[\"XRAY_REQUIRE_MINIMAL_HOST\"]='+repr(os.environ.get('XRAY_REQUIRE_MINIMAL_HOST','false'))+'\nos.environ[\"XRAY_CONTAINER_IMAGE_VERSION\"]='+repr(os.environ.get('XRAY_CONTAINER_IMAGE_VERSION','26.3.27'))+'\n'+pathlib.Path('scripts/validate-native-host.py').read_text()
    print(remote("sudo -n python3 - <<'PY'\n"+code+"\nPY"));clients();return
   def baseline():
+   if mode=='podman':
+    code=pathlib.Path('scripts/runtime-ownership.py').read_text().split("if __name__ == '__main__':")[0]+"\nstate=inspect();assert state['podman_running']\nd=json.loads(subprocess.check_output(PODMAN+['inspect',state['podman_id']],text=True))[0]\nrestarts=subprocess.check_output(['systemctl','show','xray-podman','-p','NRestarts','--value'],text=True).strip()\nprint(json.dumps(dict(mode='podman',Id=d['Id'],MainPID=str(d['State']['Pid']),StartedAt=d['State']['StartedAt'],NRestarts=restarts,boot=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip())))"
+    return json.loads(remote('sudo -n python3 -c '+shlex.quote(code)))
    if mode=='docker':
     code="import json,pathlib,subprocess;d=json.loads(subprocess.check_output(['docker','inspect','xray'],text=True))[0];print(json.dumps(dict(mode='docker',Id=d['Id'],MainPID=str(d['State']['Pid']),StartedAt=d['State']['StartedAt'],RestartCount=d['RestartCount'],boot=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip())))"
     return json.loads(remote("sudo -n python3 -c "+shlex.quote(code)))
@@ -73,7 +79,7 @@ def main():
    for attempt in range(60):
     time.sleep(3)
     try:
-     now=baseline();active=remote('systemctl is-active xray' if mode=='native' else "sudo -n docker inspect --format '{{if .State.Running}}active{{end}}' xray",False)
+     now=baseline();active=remote('systemctl is-active '+('xray-podman' if mode=='podman' else 'xray') if mode!='docker' else "sudo -n docker inspect --format '{{if .State.Running}}active{{end}}' xray",False)
      if active=='active' and now['MainPID']!='0' and (now['boot']!=before['boot'] if stage=='reboot' else now['MainPID']!=before['MainPID']):break
     except (RuntimeError,subprocess.TimeoutExpired):pass
    else:raise RuntimeError('Service did not recover')
@@ -101,7 +107,13 @@ print('Docker log rotation PASS; files',len(files),'bytes',sum(p.stat().st_size 
    print(remote("sudo -n python3 - <<'PY'\n"+code+"\nPY",timeout=150));clients();return
   if stage=='logs':
    before=json.loads(remote("sudo -n python3 -c 'import json,pathlib;print(json.dumps([p.name for p in pathlib.Path(\"/var/log/journal\").rglob(\"*@*.journal\")]))'"))
-   print(remote("sudo -n systemd-run --wait --unit=xray-journal-probe --property=StandardOutput=journal --property=LogRateLimitIntervalSec=0 /usr/bin/python3 -c 'import os,base64; [print(base64.b64encode(os.urandom(768)).decode()) for i in range(45000)]'",timeout=150))
+   if mode=='podman':
+    current=baseline()
+    code="import json,os,subprocess\nd=json.loads(subprocess.check_output(['podman','--remote=false','inspect','xray-podman'],text=True))[0]\nassert d['Id']=="+repr(current['Id'])+"\nassert d['HostConfig']['LogConfig']['Type']=='journald'\nwith open('/proc/'+str(d['State']['Pid'])+'/fd/1','wb',buffering=0) as stream:\n for i in range(25000):stream.write(os.urandom(768).hex().encode()+b'\\n')\nsubprocess.run(['journalctl','--sync'],check=True)\nassert subprocess.check_output(['journalctl','CONTAINER_NAME=xray-podman','-n','1','--output=json'],text=True).strip()\nprint('Actual Podman stdout reached bounded journald PASS')"
+    print(remote('sudo -n python3 -c '+shlex.quote(code),timeout=150))
+    assert baseline()==current,'Log injection restarted Podman runtime'
+   else:
+    print(remote("sudo -n systemd-run --wait --unit=xray-journal-probe --property=StandardOutput=journal --property=LogRateLimitIntervalSec=0 /usr/bin/python3 -c 'import os,base64; [print(base64.b64encode(os.urandom(768)).decode()) for i in range(45000)]'",timeout=150))
    code="import pathlib,subprocess\n"+inspect.getsource(journal_allocated_bytes)+inspect.getsource(journal_rotation_observed)+"""
 subprocess.run(['journalctl','--sync'],check=True)
 files=[p for p in pathlib.Path('/var/log/journal').rglob('*') if p.is_file() and p.name.endswith(('.journal','.journal~'))]

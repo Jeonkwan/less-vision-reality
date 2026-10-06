@@ -18,7 +18,7 @@ spec.loader.exec_module(module)
 
 
 class Ownership(unittest.TestCase):
-    def inspect(self, labels=None, source='/opt/xray/config', daemon_fails=False):
+    def inspect(self, labels=None, source='/opt/xray/config', daemon_fails=False, foreign_port=None):
         labels = labels if labels is not None else {
             'com.docker.compose.project': 'xray', 'com.docker.compose.service': 'xray',
             'com.docker.compose.project.working_dir': '/opt/xray',
@@ -28,13 +28,19 @@ class Ownership(unittest.TestCase):
         def call(argv, **kwargs):
             if argv == ['docker', 'info'] and daemon_fails:
                 raise subprocess.CalledProcessError(1, argv)
-            if argv[:3] == ['systemctl', 'show', 'xray']: out = 'not-found\n'
+            if argv[:2] == ['systemctl', 'show']: out = 'not-found\n'
             elif argv[:3] == ['docker', 'container', 'ls']: out = 'owned-id\n'
+            elif argv == ['docker', 'ps', '-q']: out = 'unrelated-id\n' if foreign_port else ''
+            elif argv == ['docker', 'inspect', 'unrelated-id']:
+                out = json.dumps([{'HostConfig':{'PortBindings':{'443/tcp':[{'HostPort':str(foreign_port)}]}}}])
             elif argv[:2] == ['docker', 'inspect']: out = json.dumps(data)
             else: out = ''
             return subprocess.CompletedProcess(argv, 0, out, '')
         with tempfile.TemporaryDirectory() as tmp:
-            return module.inspect(pathlib.Path(tmp), call, docker=True)
+            return module.inspect(pathlib.Path(tmp), call, docker=True, podman=False)
+
+    def test_nat_published_port_without_listener_is_reported(self):
+        self.assertEqual(self.inspect(foreign_port=443)['foreign_ports'],[443])
 
     def test_legacy_compose_ownership_is_recognized(self):
         self.assertEqual(self.inspect()['docker_id'], 'owned-id')
@@ -57,7 +63,7 @@ class Ownership(unittest.TestCase):
                 raise subprocess.CalledProcessError(rc,argv)
             return subprocess.CompletedProcess(argv,rc,out,'')
         with tempfile.TemporaryDirectory() as tmp:
-            data=module.inspect(pathlib.Path(tmp),call,docker=False)
+            data=module.inspect(pathlib.Path(tmp),call,docker=False,podman=False)
             self.assertFalse(data['native_exists'])
             self.assertFalse(data['native_running'])
 
@@ -66,7 +72,7 @@ class Ownership(unittest.TestCase):
             root = pathlib.Path(tmp); unit = root / 'etc/systemd/system/xray.service'
             unit.parent.mkdir(parents=True); unit.write_text('[Service]\nUser=root\n')
             with self.assertRaisesRegex(RuntimeError, 'unmanaged xray.service'):
-                module.inspect(root, docker=False)
+                module.inspect(root, docker=False, podman=False)
 
     def test_unmarked_docker_directory_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -74,7 +80,7 @@ class Ownership(unittest.TestCase):
             def call(argv, **kwargs):
                 return subprocess.CompletedProcess(argv, 0, 'not-found' if argv[1]=='show' else '', '')
             with self.assertRaisesRegex(RuntimeError, 'unmarked'):
-                module.inspect(root, call, docker=False)
+                module.inspect(root, call, docker=False, podman=False)
 
 
 class Selector(unittest.TestCase):
@@ -128,24 +134,29 @@ class Selector(unittest.TestCase):
     def test_executed_dispatch_isolates_native_and_docker_roles(self):
         # Execute the real orchestration/defaults with harmless role sentinels.
         # This checks Ansible's conditions, rather than only YAML syntax/text.
-        for mode in ['native', 'docker']:
+        for mode in ['native', 'docker', 'podman']:
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 directory = pathlib.Path(tmp) / 'ansible'
                 shutil.copytree(ROOT / 'ansible', directory)
                 scripts = pathlib.Path(tmp) / 'scripts'; scripts.mkdir()
                 (scripts / 'runtime-ownership.py').write_text('import json\nprint(json.dumps(dict(native_exists=False,native_running=False,native_enabled=False,docker_exists=False,docker_running=False,docker_id="")))\n')
-                for role in ['proxy_host_policy','xray_common','docker_prereqs','xray_native','xray_deploy']:
+                for role in ['proxy_host_policy','xray_common','docker_prereqs','xray_native','xray_deploy','podman_prereqs','xray_podman']:
                     (directory / f'roles/{role}/tasks/main.yml').write_text('- name: '+role+' sentinel\n  ansible.builtin.debug:\n    msg: EXECUTED_'+role+' {{ xray_config_path }}\n')
                 result = self.run_play(directory, mode)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn('/usr/local/etc/xray' if mode=='native' else '/opt/xray/config', result.stdout)
-                self.assertIn('EXECUTED_xray_'+('native' if mode=='native' else 'deploy'), result.stdout)
+                self.assertIn({'native':'/usr/local/etc/xray','docker':'/opt/xray/config','podman':'/opt/xray-podman/config'}[mode], result.stdout)
+                self.assertIn('EXECUTED_xray_'+{'native':'native','docker':'deploy','podman':'podman'}[mode], result.stdout)
                 if mode=='native':
                     self.assertNotIn('EXECUTED_docker_prereqs', result.stdout)
                     self.assertNotIn('EXECUTED_xray_deploy', result.stdout)
-                else:
+                elif mode=='docker':
                     self.assertIn('EXECUTED_docker_prereqs', result.stdout)
                     self.assertNotIn('EXECUTED_xray_native', result.stdout)
+                else:
+                    self.assertIn('EXECUTED_podman_prereqs', result.stdout)
+                    self.assertNotIn('EXECUTED_docker_prereqs', result.stdout)
+                    self.assertNotIn('EXECUTED_xray_native', result.stdout)
+                    self.assertNotIn('EXECUTED_xray_deploy', result.stdout)
 
     def test_active_opposite_requires_opt_in_before_any_role(self):
         for mode in ['native', 'docker']:
@@ -157,7 +168,7 @@ class Selector(unittest.TestCase):
                              native_enabled=mode=='docker', docker_exists=mode=='native',
                              docker_running=mode=='native', docker_id='owned')
                 (scripts / 'runtime-ownership.py').write_text('print('+repr(json.dumps(state))+')\n')
-                for role in ['proxy_host_policy','xray_common','docker_prereqs','xray_native','xray_deploy']:
+                for role in ['proxy_host_policy','xray_common','docker_prereqs','xray_native','xray_deploy','podman_prereqs','xray_podman']:
                     (directory / f'roles/{role}/tasks/main.yml').write_text('- name: harmless sentinel\n  ansible.builtin.debug:\n    msg: ROLE_EXECUTED\n')
                 rejected = self.run_play(directory, mode)
                 self.assertNotEqual(rejected.returncode, 0)
@@ -168,7 +179,7 @@ class Selector(unittest.TestCase):
                 self.assertIn('ROLE_EXECUTED', accepted.stdout)
 
     def test_lifecycle_tags_select_only_existing_runtime_without_installation(self):
-        for mode in ['native', 'docker']:
+        for mode in ['native', 'docker', 'podman']:
             for tag in ['xray_down', 'xray_reload', 'xray_recreate']:
                 with self.subTest(mode=mode, tag=tag), tempfile.TemporaryDirectory() as tmp:
                     directory = pathlib.Path(tmp) / 'ansible'
@@ -176,9 +187,10 @@ class Selector(unittest.TestCase):
                     scripts = pathlib.Path(tmp) / 'scripts'; scripts.mkdir()
                     state = dict(native_exists=mode=='native', native_running=mode=='native',
                                  native_enabled=mode=='native', docker_exists=mode=='docker',
-                                 docker_running=mode=='docker', docker_id='owned')
+                                 docker_running=mode=='docker', docker_id='owned',
+                                 podman_unit_exists=mode=='podman', podman_running=mode=='podman',podman_enabled=mode=='podman')
                     (scripts / 'runtime-ownership.py').write_text('print('+repr(json.dumps(state))+')\n')
-                    for role in ['proxy_host_policy','xray_common','docker_prereqs','xray_native','xray_deploy']:
+                    for role in ['proxy_host_policy','xray_common','docker_prereqs','xray_native','xray_deploy','podman_prereqs','xray_podman']:
                         taskfile = directory / f'roles/{role}/tasks/main.yml'
                         original = yaml.safe_load(taskfile.read_text())
                         tasks = [{'name': role+' install sentinel', 'ansible.builtin.fail': {'msg':'Unexpected normal deployment task'}}]
@@ -189,7 +201,7 @@ class Selector(unittest.TestCase):
                         taskfile.write_text(yaml.safe_dump(tasks))
                     result = self.run_play(directory, mode, tags=tag)
                     self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-                    self.assertIn('LIFECYCLE_xray_'+('native' if mode=='native' else 'deploy'),result.stdout)
+                    self.assertIn('LIFECYCLE_xray_'+{'native':'native','docker':'deploy','podman':'podman'}[mode],result.stdout)
                     self.assertNotIn('Unexpected normal deployment task',result.stdout)
                     self.assertNotIn('LIFECYCLE_xray_'+('deploy' if mode=='native' else 'native'),result.stdout)
 

@@ -1,0 +1,25 @@
+---
+- name: Require supported Podman host
+  ansible.builtin.shell: . /etc/os-release && test "$ID" = ubuntu && test "$VERSION_ID" = 24.04 && test "$(uname -m)" = x86_64
+  changed_when: false
+
+- name: Install distribution Podman and bridge networking without Docker compatibility
+  ansible.builtin.apt:
+    name: [podman, netavark, aardvark-dns, iptables]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+
+- name: Inspect rootful local Podman compatibility
+  ansible.builtin.command:
+    argv: [podman, --remote=false, info, --format, json]
+  register: xray_podman_info
+  changed_when: false
+
+- name: Require rootful Podman and cgroup v2
+  ansible.builtin.assert:
+    that:
+      - not (xray_podman_info.stdout | from_json).host.security.rootless
+      - (xray_podman_info.stdout | from_json).host.cgroupVersion == 'v2'
+      - (xray_podman_info.stdout | from_json).version.Version is version('4.9', '>=')

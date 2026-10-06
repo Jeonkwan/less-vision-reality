@@ -2,14 +2,21 @@
 - name: Stop verified opposite Docker runtime after candidate validation
   ansible.builtin.include_role:
     name: xray_cleanup
-  when: xray_deployment_mode == 'native' and xray_existing.docker_exists
+  when: xray_deployment_mode != 'docker' and xray_existing.docker_exists
 
 - name: Stop and disable verified opposite native runtime after candidate validation
   ansible.builtin.systemd_service:
     name: xray
     state: stopped
     enabled: false
-  when: xray_deployment_mode == 'docker' and xray_existing.native_exists
+  when: xray_deployment_mode != 'native' and xray_existing.native_exists
+
+- name: Stop and disable verified opposite Podman service after candidate validation
+  ansible.builtin.systemd_service:
+    name: xray-podman
+    state: stopped
+    enabled: false
+  when: xray_deployment_mode != 'podman' and xray_existing.podman_unit_exists | default(false)
 
 - name: Require free IPv4 and IPv6 service port before switch or fresh deployment
   ansible.builtin.command:
@@ -36,4 +43,6 @@
   when: >-
     not ((xray_existing.native_running and xray_existing.native_port == (xray_host_port | int))
     if xray_deployment_mode == 'native' else
-    (xray_existing.docker_running and (xray_host_port | int) in xray_existing.docker_ports))
+    ((xray_existing.podman_running | default(false) and (xray_host_port | int) in xray_existing.podman_ports)
+    if xray_deployment_mode == 'podman' else
+    (xray_existing.docker_running and (xray_host_port | int) in xray_existing.docker_ports)))

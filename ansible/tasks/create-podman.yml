@@ -1,0 +1,21 @@
+---
+- name: Create managed Podman container without starting it
+  ansible.builtin.command:
+    argv:
+    - podman
+    - --remote=false
+    - create
+    - --name=xray-podman
+    - --pull=never
+    - --user=65532:65532
+    - --network=bridge
+    - --sysctl=net.ipv4.ip_unprivileged_port_start=0
+    - --cap-drop=all
+    - --restart=no
+    - --log-driver=journald
+    - --label=io.github.jeonkwan.less-vision-reality.spec=v2
+    - --label=io.github.jeonkwan.less-vision-reality.runtime=podman
+    - --label=io.github.jeonkwan.less-vision-reality.root=/opt/xray-podman
+    - --publish=443:443/tcp
+    - --volume=/opt/xray-podman/config:/usr/local/etc/xray:ro
+    - '{{ xray_podman_create_image | default(xray_container_image) }}'
