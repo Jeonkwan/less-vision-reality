@@ -13,6 +13,7 @@ if [ "$mode" = native ]; then
 elif [ "$mode" = podman ]; then
   sudo -n systemctl show xray-podman -p ActiveState -p MainPID -p NRestarts -p ExecMainStartTimestampMonotonic || true
   sudo -n podman --remote=false inspect --format '{{json .State}}' xray-podman || true
+  sudo -n podman --remote=false inspect --format 'AppArmor={{.AppArmorProfile}} Security={{json .HostConfig.SecurityOpt}} CapDrop={{json .HostConfig.CapDrop}} Sysctls={{json .HostConfig.Sysctls}}' xray-podman || true
 else
   sudo -n docker inspect --format '{{json .State}}' xray || true
 fi
@@ -30,4 +31,5 @@ s=re.sub(r'(?i)("(?:privateKey|publicKey|shortIds)"\s*:\s*)("[^"]*"|\[[^\]]*\])'
 print(s)
 PYLOG
 sudo -n journalctl -k --since '48 hours ago' --no-pager --grep='Out of memory|oom-kill|Killed process' -n 30 || true
+sudo -n journalctl -k --since '30 minutes ago' --no-pager --grep='apparmor.*DENIED|SECCOMP|audit.*denied' -n 30 || true
 sudo -n journalctl --disk-usage || true
