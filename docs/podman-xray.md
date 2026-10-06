@@ -111,5 +111,6 @@ reboot/client inspection while retaining unrelated forwarding rules.
 After acceptance, destroy the exact recorded flatwhite instance and owned static
 IP/key/snapshots, delete its empty workspace, and park flatwhite.mokamaker.site at
 127.0.0.1. Keep shared credentials/backends. Merge and release need separate owner
-instructions. See the [Podman validation record](podman-runtime-validation.md) for actual results
+instructions. The authorized flatwhite acceptance and teardown completed on 2026-10-06.
+See the [Podman validation record](podman-runtime-validation.md) for actual results
 and run links.

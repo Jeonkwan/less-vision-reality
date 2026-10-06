@@ -61,8 +61,17 @@ Ubuntu netavark's rules allowed established/in-subnet traffic but omitted a new
 inbound allowance for the published port. The fix adds/removes one owned DNAT-only
 TCP 443 allowance for the inspected container IPv4 address. It never changes global
 policy or flushes rules. Tests cover idempotence, replacement, exact cleanup,
-untrusted records and inspection failures. Post-fix reboot acceptance is pending.
-Both tracked fixtures were cleaned. Remaining live gate: healthy post-reboot transport.
+untrusted records and inspection failures. [Forwarding-fix deployment](https://github.com/Jeonkwan/less-vision-reality/actions/runs/37424599395)
+and [installed-rule/host/client inspection](https://github.com/Jeonkwan/less-vision-reality/actions/runs/37424949650)
+passed. [Forwarding-fix three-runtime CI](https://github.com/Jeonkwan/less-vision-reality/actions/runs/37424321484)
+passed. The [focused final follow-up](https://github.com/Jeonkwan/less-vision-reality/actions/runs/37426702910)
+passed on 2026-10-06: unchanged deployment preserved process/container/boot and
+forwarding; stop removed the exact owned rule and record; crash recovery restored
+one rule; native switch removed it and return restored it; unrelated forwarding
+rules were preserved; and reboot plus both supplied clients by IP/hostname passed.
+All five final Podman inspections recorded `FORWARD DROP` with the owned allowance
+present, proving healthy transport under the previously failing policy. Both
+tracked container fixtures were cleaned in the earlier run. All agreed gates pass.
 
 Review also tightened lifecycle activation: restart/recreate tags cannot bypass
 normal candidate-validated switching, even with switch opt-in. Executable Ansible
@@ -80,7 +89,22 @@ is limited to actual image/config/startup CI checks.
 
 ## Teardown
 
-Pending until all acceptance gates pass. Destroy only the exact recorded instance
-and owned static IP/key/snapshots, delete its empty workspace, and park
-flatwhite.mokamaker.site at 127.0.0.1. Preserve Decaf/Cream and shared backends,
-credentials and environments.
+[Exact-identity destruction](https://github.com/Jeonkwan/lightsail-proxy/actions/runs/37428408888)
+completed on 2026-10-06 after all agreed gates passed. Exactly six owned resources
+were destroyed. The helper verified instance, static IP, key and matching snapshots
+absent, confirmed empty state, deleted workspace `flatwhite`, and parked DNS.
+Independent Google DNS-over-HTTPS resolution returned `127.0.0.1` for
+`flatwhite.mokamaker.site` (response from authoritative server `156.154.132.200`).
+No flatwhite validation resources remain. Shared credentials/environments/backends
+were retained.
+
+The cleanup guard confirmed these serving identities and addresses unchanged:
+
+| Node | Instance | Address | Existing runtime |
+| --- | --- | --- | --- |
+| Decaf | `lightsail-singapore-c-decaf-20261005103556` | `52.74.81.140` | Native 26.3.27 |
+| Cream | `lightsail-singapore-a-cream-20261005165610` | `18.136.58.134` | Docker 26.3.27 |
+
+Neither serving node was redeployed, rebooted, destroyed or used as client fallback.
+This completed authorization is task-specific; future cloud mutations require a
+new selected scope. No merge or release was performed.
