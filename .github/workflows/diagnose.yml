@@ -51,6 +51,7 @@ run-name: 'Runtime validation: ${{ inputs.stage }} ${{ inputs.target }} ${{ inpu
         - suite
         - validate-spare
         - validate-podman
+        - validate-podman-final
         default: clients
         required: true
       validation_hostname:
@@ -73,6 +74,7 @@ jobs:
     env:
       SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
       SPARE_RESUME: ${{ inputs.resume_spare }}
+      PODMAN_FINAL_ONLY: ${{ inputs.stage == 'validate-podman-final' }}
       XRAY_PRIVATE_KEY: ${{ secrets.XRAY_PRIVATE_KEY }}
       VALIDATION_HOSTNAME: ${{ inputs.validation_hostname }}
       XRAY_UUID: ${{ secrets.XRAY_UUID }}
@@ -89,15 +91,15 @@ jobs:
     - name: Install verified test clients on runner
       run: bash scripts/install-test-clients.sh
     - uses: actions/setup-python@v5
-      if: inputs.stage == 'validate-spare' || inputs.stage == 'validate-podman'
+      if: inputs.stage == 'validate-spare' || inputs.stage == 'validate-podman' || inputs.stage == 'validate-podman-final'
       with:
         python-version: "3.11"
     - name: Install controller Ansible for spare deployment
-      if: inputs.stage == 'validate-spare' || inputs.stage == 'validate-podman'
+      if: inputs.stage == 'validate-spare' || inputs.stage == 'validate-podman' || inputs.stage == 'validate-podman-final'
       run: pip install ansible-core==2.16.19
     - name: Validate selected host and supplied client profiles
       run: |
-        if [ "$STAGE" = validate-podman ]; then
+        if [ "$STAGE" = validate-podman ] || [ "$STAGE" = validate-podman-final ]; then
           python3 scripts/podman-validation.py
         elif [ "$STAGE" = validate-spare ]; then
           python3 scripts/spare-validation.py

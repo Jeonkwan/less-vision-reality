@@ -115,6 +115,40 @@ assert d['Id']==identity and d['Config']['Labels']['less-vision-reality.fixture'
             deploy(mode,overrides={'xray_reality_private_key':'INVALID_CANDIDATE_KEY'},rejected='Validate Podman candidate')
             stage('compare',mode)
 
+        def forwarding_snapshot():
+            return json.loads(remote('''import json,pathlib,subprocess
+path=pathlib.Path('/opt/xray-podman/forwarding.json')
+lines=subprocess.check_output(['iptables','-S','FORWARD'],text=True).splitlines()
+print(json.dumps(dict(record=json.loads(path.read_text()) if path.exists() else None,
+owned=[line for line in lines if 'less-vision-reality:xray-podman:' in line],
+other=[line for line in lines if not line.startswith('-P ') and 'netavark' not in line.lower() and 'less-vision-reality:xray-podman:' not in line])))
+'''))
+
+        if os.environ.get('PODMAN_FINAL_ONLY')=='true':
+            assert resume,'Final-only validation requires earlier fresh and full-gate evidence'
+            stage('ready');stage('inspect')
+            before=forwarding_snapshot()
+            assert before['record'] and len(before['owned'])==1
+            stage('baseline');deploy('podman');stage('compare')
+            assert forwarding_snapshot()==before,'Unchanged deploy altered forwarding'
+            deploy('podman',tags='xray_down')
+            stopped=probe();assert not stopped['podman_running'] and not stopped['podman_service_active']
+            stopped_rules=forwarding_snapshot()
+            assert stopped_rules['record'] is None and not stopped_rules['owned']
+            assert stopped_rules['other']==before['other'],'Stop changed unrelated forwarding rules'
+            deploy('podman');stage('recovery');stage('inspect')
+            active=forwarding_snapshot()
+            assert active['record'] and len(active['owned'])==1 and active['other']==before['other']
+            deploy('native',switch=True);stage('inspect','native')
+            switched=forwarding_snapshot()
+            assert switched['record'] is None and not switched['owned'] and switched['other']==before['other']
+            deploy('podman',switch=True);stage('inspect')
+            stage('reboot');stage('inspect')
+            final=forwarding_snapshot()
+            assert final['record'] and len(final['owned'])==1 and final['other']==before['other']
+            print('PODMAN FLATWHITE FINAL NETWORK ACCEPTANCE PASS',flush=True)
+            return
+
         try:
             stage('ready')
             deploy('podman',switch=resume)

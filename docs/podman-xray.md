@@ -103,6 +103,10 @@ conditions also have executable local tests.
 `resume_spare=true` is only for a failed attempt after fresh footprint evidence was
 already recorded. Run explicit target client checks: no peer fallback is permitted.
 Runner transport checks do not establish complete iOS TUN/DNS/mobile behavior.
+After earlier gates have recorded evidence, `stage=validate-podman-final` with
+`resume_spare=true` runs only the affected forwarding-hook follow-up: unchanged
+deployment, stop/rule cleanup, crash recovery, native switch cleanup/return, and
+reboot/client inspection while retaining unrelated forwarding rules.
 
 After acceptance, destroy the exact recorded flatwhite instance and owned static
 IP/key/snapshots, delete its empty workspace, and park flatwhite.mokamaker.site at
