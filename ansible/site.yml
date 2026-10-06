@@ -7,7 +7,7 @@
     - name: Reject unsupported runtime before any host operation
       ansible.builtin.assert:
         that:
-          - xray_deployment_mode in ['native', 'docker']
+          - xray_deployment_mode in ['native', 'docker', 'podman']
           - xray_binary_version in ['25.10.15', '26.3.27']
           - xray_container_image_version in ['25.10.15', '26.3.27']
           - xray_container_image == 'ghcr.io/xtls/xray-core:' ~ xray_container_image_version
@@ -18,7 +18,11 @@
           - xray_service_root == '/opt/xray'
           - xray_compose_file == '/opt/xray/docker-compose.yml'
           - xray_compose_project == 'xray'
-          - xray_config_path == ('/usr/local/etc/xray' if xray_deployment_mode == 'native' else '/opt/xray/config')
+          - xray_podman_root == '/opt/xray-podman'
+          - xray_podman_service == 'xray-podman'
+          - xray_config_path == ('/usr/local/etc/xray' if xray_deployment_mode == 'native' else ('/opt/xray-podman/config' if xray_deployment_mode == 'podman' else '/opt/xray/config'))
+          - xray_deployment_mode != 'podman' or (xray_host_port | int == 443 and xray_container_port | int == 443)
+          - xray_deployment_mode != 'podman' or (not xray_compose_environment and not xray_compose_networks)
         fail_msg: Unsupported runtime, release or deployment paths.
       tags: [always]
 
@@ -35,12 +39,20 @@
         xray_existing: "{{ xray_runtime_probe.stdout | trim | from_json }}"
       tags: [always]
 
+    - name: Refuse unrelated container published ports before deployment
+      ansible.builtin.assert:
+        that: (xray_host_port | int) not in (xray_existing.foreign_ports | default([]))
+        fail_msg: An unrelated container publishes the requested port; no container will be stopped or removed.
+      tags: [always]
+
     - name: Require explicit opt-in before switching an existing runtime
       ansible.builtin.assert:
         that:
           - >-
             xray_allow_runtime_switch | bool or
-            not (xray_existing.docker_running if xray_deployment_mode == 'native' else (xray_existing.native_running or xray_existing.native_enabled))
+            not ((xray_deployment_mode != 'docker' and xray_existing.docker_running) or
+                 (xray_deployment_mode != 'native' and (xray_existing.native_running or xray_existing.native_enabled)) or
+                 (xray_deployment_mode != 'podman' and (xray_existing.podman_running | default(false) or xray_existing.podman_enabled | default(false))))
         fail_msg: Opposite runtime exists; use xray_allow_runtime_switch=true for a deliberate switch.
       tags: [always]
 
@@ -53,3 +65,7 @@
       when: xray_deployment_mode == 'native'
     - role: xray_deploy
       when: xray_deployment_mode == 'docker'
+    - role: podman_prereqs
+      when: xray_deployment_mode == 'podman'
+    - role: xray_podman
+      when: xray_deployment_mode == 'podman'

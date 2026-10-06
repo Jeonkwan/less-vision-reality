@@ -70,7 +70,8 @@
           "public_key": "ENV_PUBLIC_KEY",
           "short_id": "ENV_SHORT_ID"
         }
-      }
+      },
+      "domain_strategy": "ipv4_only"
     },
     "clash": {
       "name": "flatwhite",

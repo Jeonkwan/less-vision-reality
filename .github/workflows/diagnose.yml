@@ -7,10 +7,10 @@ run-name: 'Runtime validation: ${{ inputs.stage }} ${{ inputs.target }} ${{ inpu
         type: choice
         options: ["26.3.27", "25.10.15"]
         default: "26.3.27"
-        description: Expected reviewed Docker image version
+        description: Expected reviewed container image version
       deployment_mode:
         type: choice
-        options: [native, docker]
+        options: [native, docker, podman]
         default: native
         required: true
       resume_spare:
@@ -20,7 +20,7 @@ run-name: 'Runtime validation: ${{ inputs.stage }} ${{ inputs.target }} ${{ inpu
       require_minimal_host:
         type: boolean
         default: false
-        description: Assert Docker absent on a freshly provisioned native host
+        description: Assert Docker absent on a freshly provisioned native or Podman host
       environment:
         type: environment
         required: true
@@ -49,6 +49,7 @@ run-name: 'Runtime validation: ${{ inputs.stage }} ${{ inputs.target }} ${{ inpu
         - logs
         - suite
         - validate-spare
+        - validate-podman
         default: clients
         required: true
       validation_hostname:
@@ -67,7 +68,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       SSH_PRIVATE_KEY: ${{ secrets.HOST_SSH_PRIVATE_KEY }}
       SPARE_RESUME: ${{ inputs.resume_spare }}
@@ -87,15 +88,17 @@ jobs:
     - name: Install verified test clients on runner
       run: bash scripts/install-test-clients.sh
     - uses: actions/setup-python@v5
-      if: inputs.stage == 'validate-spare'
+      if: inputs.stage == 'validate-spare' || inputs.stage == 'validate-podman'
       with:
         python-version: "3.11"
     - name: Install controller Ansible for spare deployment
-      if: inputs.stage == 'validate-spare'
+      if: inputs.stage == 'validate-spare' || inputs.stage == 'validate-podman'
       run: pip install ansible-core==2.16.19
     - name: Validate selected host and supplied client profiles
       run: |
-        if [ "$STAGE" = validate-spare ]; then
+        if [ "$STAGE" = validate-podman ]; then
+          python3 scripts/podman-validation.py
+        elif [ "$STAGE" = validate-spare ]; then
           python3 scripts/spare-validation.py
         else
           python3 scripts/native-validation.py

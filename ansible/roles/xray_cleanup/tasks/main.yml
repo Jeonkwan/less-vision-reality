@@ -2,4 +2,4 @@
 - name: Stop only the verified opposite Compose container
   ansible.builtin.command:
     argv: [docker, stop, "{{ xray_existing.docker_id }}"]
-  when: xray_deployment_mode == 'native' and xray_existing.docker_running
+  when: xray_deployment_mode != 'docker' and xray_existing.docker_running

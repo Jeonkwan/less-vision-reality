@@ -1,0 +1,207 @@
+---
+- name: Create private Podman deployment root
+  ansible.builtin.file:
+    path: "{{ xray_podman_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Mark inspected Podman deployment ownership
+  ansible.builtin.copy:
+    dest: /opt/xray-podman/.managed-by-less-vision-reality
+    content: "less-vision-reality podman-runtime v1\n"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Create Podman configuration directory
+  ansible.builtin.file:
+    path: "{{ xray_config_path }}"
+    state: directory
+    owner: root
+    group: "65532"
+    mode: "0750"
+
+- name: Pull reviewed official Podman image without changing serving container
+  ansible.builtin.command:
+    argv: [podman, --remote=false, pull, "{{ xray_container_image }}"]
+  changed_when: false
+
+- name: Inspect reviewed Podman image
+  ansible.builtin.command:
+    argv: [podman, --remote=false, image, inspect, "{{ xray_container_image }}"]
+  register: xray_podman_image
+  changed_when: false
+
+- name: Require reviewed unprivileged image entrypoint
+  ansible.builtin.assert:
+    that:
+      - (xray_podman_image.stdout | from_json)[0].Config.User == '65532'
+      - (xray_podman_image.stdout | from_json)[0].Config.Entrypoint == ['/usr/local/bin/xray']
+
+- name: Render private Podman candidate configuration
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/config.json.j2"
+    dest: /opt/xray-podman/config.candidate.json
+    owner: root
+    group: "65532"
+    mode: "0640"
+  no_log: true
+
+- name: Validate Podman candidate without networking or published ports
+  ansible.builtin.command:
+    argv:
+      - podman
+      - --remote=false
+      - run
+      - --rm
+      - --pull=never
+      - --network=none
+      - --user=65532:65532
+      - --security-opt=no-new-privileges
+      - --cap-drop=all
+      - --mount
+      - type=bind,src=/opt/xray-podman/config.candidate.json,dst=/candidate.json,readonly
+      - "{{ xray_container_image }}"
+      - run
+      - -test
+      - -config
+      - /candidate.json
+  changed_when: false
+  no_log: true
+
+- name: Stage Podman supervisor unit
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/xray-podman.service.j2"
+    dest: /opt/xray-podman/xray-podman.candidate.service
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Validate Podman supervisor syntax before switching
+  ansible.builtin.command:
+    argv: [systemd-analyze, verify, /opt/xray-podman/xray-podman.candidate.service]
+  changed_when: false
+
+- name: Activate Podman runtime with switch recovery
+  block:
+    - name: Stop opposite runtime only after Podman candidates passed
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/switch-runtime.yml"
+
+    - name: Activate validated Podman configuration
+      ansible.builtin.copy:
+        remote_src: true
+        src: /opt/xray-podman/config.candidate.json
+        dest: /opt/xray-podman/config/config.json
+        owner: root
+        group: "65532"
+        mode: "0640"
+      no_log: true
+      register: xray_podman_config
+
+    - name: Install verified Podman supervisor helper
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/runtime-ownership.py"
+        dest: /opt/xray-podman/runtime-ownership.py
+        owner: root
+        group: root
+        mode: "0600"
+      register: xray_podman_helper
+
+    - name: Install validated Podman service
+      ansible.builtin.copy:
+        remote_src: true
+        src: /opt/xray-podman/xray-podman.candidate.service
+        dest: /etc/systemd/system/xray-podman.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: xray_podman_unit
+
+    - name: Decide whether the owned Podman container needs replacement
+      ansible.builtin.set_fact:
+        xray_podman_replace: "{{ not (xray_existing.podman_exists | default(false)) or xray_podman_config.changed or (xray_existing.podman_image | default('')) != (xray_podman_image.stdout | from_json)[0].Id }}"
+
+    - name: Stop owned Podman service before replacing its container
+      ansible.builtin.systemd_service:
+        name: xray-podman
+        state: stopped
+        daemon_reload: true
+      when: xray_podman_replace and xray_existing.podman_unit_exists | default(false)
+
+    - name: Remove only the previously verified Podman container
+      ansible.builtin.command:
+        argv: [podman, --remote=false, rm, "{{ xray_existing.podman_id }}"]
+      when: xray_podman_replace and xray_existing.podman_exists | default(false)
+
+    - name: Create managed Podman container without starting it
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/create-podman.yml"
+      when: xray_podman_replace
+
+    - name: Enable and reconcile Podman service only when changed
+      ansible.builtin.systemd_service:
+        name: xray-podman
+        enabled: true
+        daemon_reload: "{{ xray_podman_unit.changed }}"
+        state: "{{ 'restarted' if (xray_podman_replace or xray_podman_unit.changed or xray_podman_helper.changed) else 'started' }}"
+
+    - name: Wait for selected Podman listener
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ xray_host_port }}"
+        timeout: 30
+
+    - name: Require stable owned Podman service and container
+      ansible.builtin.script: "{{ playbook_dir }}/../scripts/runtime-ownership.py --require-podman-running"
+      args:
+        executable: python3
+      register: xray_podman_state
+      changed_when: false
+      until: xray_podman_state.rc == 0
+      retries: 5
+      delay: 3
+  rescue:
+    - name: Restore previous opposite runtime
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/restore-opposite.yml"
+
+- name: Remove Podman staging files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: [/opt/xray-podman/config.candidate.json, /opt/xray-podman/xray-podman.candidate.service]
+
+- name: Stop only selected Podman service explicitly
+  ansible.builtin.systemd_service:
+    name: xray-podman
+    state: stopped
+  tags: [never, xray_down]
+
+- name: Restart only selected Podman service explicitly
+  ansible.builtin.systemd_service:
+    name: xray-podman
+    state: restarted
+  tags: [never, xray_reload]
+
+- name: Recreate only the verified existing Podman container explicitly
+  tags: [never, xray_recreate]
+  block:
+    - name: Require an owned Podman container for recreation
+      ansible.builtin.assert:
+        that: xray_existing.podman_exists
+    - name: Stop only the managed Podman supervisor
+      ansible.builtin.systemd_service:
+        name: xray-podman
+        state: stopped
+    - name: Remove exactly the inspected Podman container
+      ansible.builtin.command:
+        argv: [podman, --remote=false, rm, "{{ xray_existing.podman_id }}"]
+    - name: Preserve the inspected reviewed image version during lifecycle recreation
+      ansible.builtin.set_fact:
+        xray_podman_create_image: "{{ xray_existing.podman_image_ref }}"
+    - name: Recreate with the managed Podman definition
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/tasks/create-podman.yml"
+    - name: Start the existing Podman supervisor
+      ansible.builtin.systemd_service:
+        name: xray-podman
+        state: started

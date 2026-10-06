@@ -1,20 +1,34 @@
 ---
+- name: Determine whether an opposite runtime needs restoration
+  ansible.builtin.set_fact:
+    xray_restore_opposite: >-
+      {{ (xray_deployment_mode != 'native' and (xray_existing.native_running or xray_existing.native_enabled)) or
+         (xray_deployment_mode != 'docker' and xray_existing.docker_running) or
+         (xray_deployment_mode != 'podman' and (xray_existing.podman_running | default(false) or xray_existing.podman_enabled | default(false))) }}
+
 - name: Stop failed selected native runtime before restoring Docker
   ansible.builtin.systemd_service:
     name: xray
     state: stopped
     enabled: false
-  when: xray_deployment_mode == 'native' and xray_existing.docker_running
+  when: xray_deployment_mode == 'native' and xray_restore_opposite
+
+- name: Stop failed selected Podman supervisor before restoring opposite
+  ansible.builtin.systemd_service:
+    name: xray-podman
+    state: stopped
+    enabled: false
+  when: xray_deployment_mode == 'podman' and xray_restore_opposite and xray_podman_unit is defined
 
 - name: Restore previous verified Docker container
   ansible.builtin.command:
     argv: [docker, start, "{{ xray_existing.docker_id }}"]
-  when: xray_deployment_mode == 'native' and xray_existing.docker_running
+  when: xray_deployment_mode != 'docker' and xray_existing.docker_running
 
 - name: Stop selected Docker service before restoring native
   ansible.builtin.command:
     argv: [docker, stop, xray]
-  when: xray_deployment_mode == 'docker' and (xray_existing.native_running or xray_existing.native_enabled) and xray_compose_up is defined
+  when: xray_deployment_mode == 'docker' and xray_restore_opposite and xray_compose_up is defined
   failed_when: false
 
 - name: Restore previous verified native service
@@ -22,7 +36,14 @@
     name: xray
     state: "{{ 'started' if xray_existing.native_running else 'stopped' }}"
     enabled: "{{ xray_existing.native_enabled }}"
-  when: xray_deployment_mode == 'docker' and xray_existing.native_exists
+  when: xray_deployment_mode != 'native' and xray_existing.native_exists
+
+- name: Restore previous verified Podman supervisor
+  ansible.builtin.systemd_service:
+    name: xray-podman
+    state: "{{ 'started' if xray_existing.podman_running else 'stopped' }}"
+    enabled: "{{ xray_existing.podman_enabled }}"
+  when: xray_deployment_mode != 'podman' and xray_existing.podman_unit_exists | default(false)
 
 - name: Report activation failure after rollback attempt
   ansible.builtin.fail:

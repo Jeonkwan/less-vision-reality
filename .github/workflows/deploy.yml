@@ -49,14 +49,14 @@ on:
         required: false
         type: choice
         default: native
-        options: [native, docker]
+        options: [native, docker, podman]
       allow_runtime_switch:
         description: Allow stopping the opposite managed runtime after candidate validation
         required: false
         type: boolean
         default: false
       container_image_version:
-        description: Reviewed pinned Docker image version (separate from native xray_version)
+        description: Reviewed pinned container image version (separate from native xray_version)
         required: false
         type: string
         default: "26.3.27"
@@ -123,7 +123,7 @@ on:
         type: boolean
         default: false
       container_image_version:
-        description: Reviewed pinned Docker image version (separate from native xray_version)
+        description: Reviewed pinned container image version (separate from native xray_version)
         required: false
         type: string
         default: "26.3.27"
@@ -216,7 +216,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "$XRAY_DEPLOYMENT_MODE" in native|docker) ;; *) exit 1 ;; esac
+          case "$XRAY_DEPLOYMENT_MODE" in native|docker|podman) ;; *) exit 1 ;; esac
           case "$XRAY_VERSION" in 25.10.15|26.3.27) ;; *) exit 1 ;; esac
           case "$XRAY_CONTAINER_IMAGE_VERSION" in 25.10.15|26.3.27) ;; *) exit 1 ;; esac
 
