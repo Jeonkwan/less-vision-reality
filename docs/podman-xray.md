@@ -8,7 +8,7 @@ proxy_solution or bootstrap runtime installation is added.
 ## Runtime contract
 
 Initial support is Ubuntu 24.04/systemd x86-64 with rootful distribution Podman
-4.9 or newer and cgroup v2. Install Podman, netavark and aardvark-dns only when
+4.9 or newer and cgroup v2. Install Podman, netavark, aardvark-dns and iptables only when
 this mode is selected. No Docker CE, Docker compatibility socket/alias, Compose,
 Python Docker SDK or Galaxy collection is required on a fresh Podman host.
 Existing engine packages are retained after switches.
@@ -33,7 +33,13 @@ omits that flag and does not alter global AppArmor policy. Validate actual TCP
 startup and zero effective/permitted/bounding capabilities, not only config parsing.
 Its private network namespace permits binding its container port 443
 using an explicit namespace sysctl; bridge networking publishes TCP 443. The
-service does not use host networking or privileged containers. Configuration is
+service does not use host networking or privileged containers. Systemd installs a
+single owned IPv4 forwarding allowance after startup, restricted to this container's
+address, TCP 443 and DNAT traffic. It removes that exact rule on stop/failed startup,
+using a private atomic `forwarding.json` ownership record. This keeps published
+traffic working when a retained Docker daemon sets FORWARD policy to DROP after
+reboot. No global policy changes, rule flushes or unrelated forwarding rules are
+issued by this helper. Configuration is
 `/opt/xray-podman/config/config.json`, root:65532 0640, with a read-only bind mount.
 The deployment root and ownership helper are root-only. Podman's journald log
 driver uses existing host retention: persistent 100 MB, runtime 32 MB, 10 MB files,

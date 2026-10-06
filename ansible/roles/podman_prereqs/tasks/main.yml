@@ -5,7 +5,7 @@
 
 - name: Install distribution Podman and bridge networking without Docker compatibility
   ansible.builtin.apt:
-    name: [podman, netavark, aardvark-dns]
+    name: [podman, netavark, aardvark-dns, iptables]
     state: present
     update_cache: true
     cache_valid_time: 3600

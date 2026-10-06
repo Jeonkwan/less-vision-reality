@@ -54,7 +54,14 @@ default AppArmor, inactive opposites and existing bounded host policy passed.
 passed changed deployment, all Podman lifecycle tags, SIGKILL recovery, actual
 container journald rotation (8 files, 56,766,464 allocated bytes), transitions to/from
 native and Docker, opt-in refusals and preservation of unrelated container fixtures.
-After final reboot Xray restarted, but client traffic failed; diagnosis is pending.
+After final reboot Xray restarted, but client traffic failed.
+[Read-only forwarding evidence](https://github.com/Jeonkwan/less-vision-reality/actions/runs/37423033440)
+showed Docker starting after Podman and setting default FORWARD policy to DROP;
+Ubuntu netavark's rules allowed established/in-subnet traffic but omitted a new
+inbound allowance for the published port. The fix adds/removes one owned DNAT-only
+TCP 443 allowance for the inspected container IPv4 address. It never changes global
+policy or flushes rules. Tests cover idempotence, replacement, exact cleanup,
+untrusted records and inspection failures. Post-fix reboot acceptance is pending.
 Both tracked fixtures were cleaned. Remaining live gate: healthy post-reboot transport.
 
 Review also tightened lifecycle activation: restart/recreate tags cannot bypass

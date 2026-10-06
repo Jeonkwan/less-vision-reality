@@ -77,6 +77,14 @@ else:
  assert all(int(status[field].strip(),16)==0 for field in ['CapEff','CapPrm','CapBnd'])
  assert data['AppArmorProfile'].startswith('containers-default-')
  assert not data['HostConfig']['Privileged']
+ import importlib.util
+ helper_spec=importlib.util.spec_from_file_location('managed_podman','/opt/xray-podman/runtime-ownership.py')
+ helper=importlib.util.module_from_spec(helper_spec);helper_spec.loader.exec_module(helper)
+ forwarding=helper.forwarding_record()
+ assert forwarding is not None and forwarding['id']==data['Id']
+ assert forwarding['ip'] in [n.get('IPAddress') for n in data['NetworkSettings']['Networks'].values()]
+ subprocess.run(['iptables','-w','5','-t','filter','-C','FORWARD']+helper.forwarding_rule(forwarding),check=True,capture_output=True)
+ print('Owned Podman DNAT forwarding allowance PASS;',run('iptables','-S','FORWARD').splitlines()[0])
  print('Podman',info['version']['Version'],'container',data['Id'],'image digest',data['Image'])
 for unit in ['apt-daily.timer','apt-daily-upgrade.timer','apt-daily.service','apt-daily-upgrade.service']:
  r=subprocess.run(['systemctl','is-enabled',unit],text=True,capture_output=True);assert r.stdout.strip()=='masked'

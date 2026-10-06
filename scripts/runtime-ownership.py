@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Read-only ownership checks; refuse ambiguous Xray resources, never discover by port."""
+"""Runtime ownership checks and narrowly scoped Podman supervisor actions."""
 import json
 import argparse
 import configparser
+import ipaddress
 import os
 import pathlib
+import re
 import shutil
 import subprocess
+import tempfile
+import time
 
 
 PODMAN = ['podman', '--remote=false']
@@ -14,6 +18,50 @@ PODMAN_ROOT = '/opt/xray-podman'
 PODMAN_MARKER = 'less-vision-reality podman-runtime v1\n'
 PODMAN_LABELS = {'io.github.jeonkwan.less-vision-reality.runtime': 'podman',
                  'io.github.jeonkwan.less-vision-reality.root': PODMAN_ROOT}
+FORWARDING_FILE = 'opt/xray-podman/forwarding.json'
+
+
+def validate_forwarding_record(record):
+    if (not isinstance(record, dict) or set(record) != {'id', 'ip'} or
+            not isinstance(record['id'], str) or not re.fullmatch('[0-9a-f]{64}', record['id']) or
+            not isinstance(record['ip'], str)):
+        raise RuntimeError('Refusing unmanaged Podman forwarding identity')
+    address = ipaddress.IPv4Address(record['ip'])
+    if not any(address in ipaddress.IPv4Network(subnet) for subnet in ['10.0.0.0/8','172.16.0.0/12','192.168.0.0/16']):
+        raise RuntimeError('Refusing unexpected Podman bridge address')
+    return record
+
+
+def forwarding_record(root=pathlib.Path('/')):
+    path = root / FORWARDING_FILE
+    if path.is_symlink():
+        raise RuntimeError('Refusing symlinked Podman forwarding record')
+    if not path.exists():
+        return None
+    if path.stat().st_uid != os.geteuid() or path.stat().st_mode & 0o777 != 0o600:
+        raise RuntimeError('Refusing unmanaged Podman forwarding record')
+    return validate_forwarding_record(json.loads(path.read_text()))
+
+
+def forwarding_rule(record):
+    validate_forwarding_record(record)
+    return ['-d', record['ip']+'/32', '-p', 'tcp', '--dport', '443',
+            '-m', 'conntrack', '--ctstate', 'DNAT', '--ctorigdstport', '443', '-m', 'comment', '--comment',
+            'less-vision-reality:xray-podman:'+record['id'], '-j', 'ACCEPT']
+
+
+def clear_forwarding(root=pathlib.Path('/'), call=subprocess.run):
+    record = forwarding_record(root)
+    if record is None:
+        return
+    prefix = ['iptables', '-w', '5', '-t', 'filter']
+    rule = forwarding_rule(record)
+    found = call(prefix+['-C', 'FORWARD']+rule, capture_output=True, text=True)
+    if found.returncode == 0:
+        call(prefix+['-D', 'FORWARD']+rule, capture_output=True, text=True, check=True)
+    elif found.returncode != 1:
+        raise RuntimeError('Podman forwarding inspection failed')
+    (root / FORWARDING_FILE).unlink()
 
 
 def inspect_podman(root=pathlib.Path('/'), call=subprocess.run, podman=None, supervising=False):
@@ -25,6 +73,7 @@ def inspect_podman(root=pathlib.Path('/'), call=subprocess.run, podman=None, sup
             raise RuntimeError('Refusing symlinked Podman deployment')
     if deployment.exists() and (not marker.exists() or marker.read_text() != PODMAN_MARKER):
         raise RuntimeError('Refusing unmarked Podman deployment directory')
+    forwarding_record(root)
     if unit.exists():
         required = ['Description=Xray VLESS REALITY proxy (managed Podman)', 'Type=simple',
                     'ExecStart=/usr/bin/python3 /opt/xray-podman/runtime-ownership.py --podman-action start',
@@ -40,8 +89,13 @@ def inspect_podman(root=pathlib.Path('/'), call=subprocess.run, podman=None, sup
             raise RuntimeError('Refusing ambiguous Podman service definition') from error
         allowed = {'Type', 'ExecStart', 'ExecStop', 'Restart', 'RestartSec',
                    'TimeoutStopSec', 'KillMode', 'StandardOutput', 'StandardError', 'SyslogIdentifier'}
-        if set(definition['Service']) != allowed:
+        extended = allowed | {'ExecStartPost', 'ExecStopPost'}
+        if set(definition['Service']) not in [allowed, extended]:
             raise RuntimeError('Refusing unmanaged Podman service directives')
+        if set(definition['Service']) == extended:
+            for directive, action in [('ExecStartPost', 'allow-forwarding'), ('ExecStopPost', 'clear-forwarding')]:
+                if definition['Service'][directive] != '/usr/bin/python3 /opt/xray-podman/runtime-ownership.py --podman-action '+action:
+                    raise RuntimeError('Refusing unmanaged Podman forwarding supervisor')
         if any(list((root / path).glob('*.conf')) for path in [
                 'etc/systemd/system/xray-podman.service.d',
                 'run/systemd/system/xray-podman.service.d',
@@ -100,6 +154,43 @@ def inspect_podman(root=pathlib.Path('/'), call=subprocess.run, podman=None, sup
     state['podman_enabled'] = enabled
     state['podman_service_active'] = active
     return state
+
+
+def allow_forwarding(root=pathlib.Path('/'), call=subprocess.run, probe=inspect_podman, pause=time.sleep):
+    # An explicit DNAT-only allowance makes this published port independent of
+    # Docker's FORWARD default policy. Never change a global policy or flush rules.
+    for attempt in range(40):
+        state = probe(root, call, supervising=True)
+        if state['podman_running']:
+            break
+        pause(0.25)
+    else:
+        raise RuntimeError('Owned Podman container did not start for forwarding')
+    data = json.loads(call(PODMAN+['inspect', state['podman_id']], capture_output=True,
+                           text=True, check=True).stdout)[0]
+    addresses = [network['IPAddress'] for network in data['NetworkSettings']['Networks'].values()
+                 if network.get('IPAddress')]
+    if len(addresses) != 1:
+        raise RuntimeError('Refusing ambiguous Podman bridge addresses')
+    record = validate_forwarding_record({'id': state['podman_id'], 'ip': str(ipaddress.IPv4Address(addresses[0]))})
+    old = forwarding_record(root)
+    if old is not None and old != record:
+        clear_forwarding(root, call)
+    path = root / FORWARDING_FILE
+    with tempfile.NamedTemporaryFile(mode='w', prefix='.forwarding-', dir=path.parent, delete=False) as temporary:
+        json.dump(record, temporary)
+    try:
+        os.replace(temporary.name, path)
+    finally:
+        pathlib.Path(temporary.name).unlink(missing_ok=True)
+    forwarding_record(root)  # Validate canonical ownership before issuing rules.
+    prefix = ['iptables', '-w', '5', '-t', 'filter']
+    rule = forwarding_rule(record)
+    found = call(prefix+['-C', 'FORWARD']+rule, capture_output=True, text=True)
+    if found.returncode == 1:
+        call(prefix+['-I', 'FORWARD', '1']+rule, capture_output=True, text=True, check=True)
+    elif found.returncode != 0:
+        raise RuntimeError('Podman forwarding inspection failed')
 
 
 def inspect(root=pathlib.Path('/'), call=subprocess.run, docker=None, podman=None):
@@ -201,13 +292,21 @@ def inspect(root=pathlib.Path('/'), call=subprocess.run, docker=None, podman=Non
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--podman-action', choices=['start', 'stop'])
+    parser.add_argument('--podman-action', choices=['start', 'stop', 'allow-forwarding', 'clear-forwarding'])
     parser.add_argument('--require-podman-running', action='store_true')
     args = parser.parse_args()
     if args.podman_action:
         state = inspect_podman(supervising=True)
+        if args.podman_action == 'allow-forwarding':
+            allow_forwarding()
+            raise SystemExit(0)
+        if args.podman_action == 'clear-forwarding':
+            clear_forwarding()
+            raise SystemExit(0)
         if not state['podman_exists']:
             raise RuntimeError('Verified Podman container is missing')
+        if args.podman_action == 'stop':
+            clear_forwarding()
         command = ['start', '--attach'] if args.podman_action == 'start' else ['stop', '--time', '10']
         os.execvp('podman', PODMAN + command + [state['podman_id']])
     else:
