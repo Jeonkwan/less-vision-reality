@@ -1,14 +1,13 @@
 """Validate reviewed images and restricted configuration with actual rootful Podman.
 
 Controller CI uses sudo; this removes only ephemeral IDs created by this test.
-Generated keys remain in memory. No network or service ports are published.
+Generated test keys are held only in a private temporary file. No network or service ports are published.
 """
-import io
 import json
 import os
 import pathlib
 import subprocess
-import tarfile
+import tempfile
 
 from jinja2 import Environment
 
@@ -25,17 +24,14 @@ private=subprocess.check_output(podman+['run','--rm']+flags+[image,'x25519'],tex
 private=next(line.split(':',1)[1].strip() for line in private.splitlines() if line.startswith(('Private key:','PrivateKey:')))
 template=Environment().from_string((pathlib.Path(__file__).resolve().parents[2]/'ansible/templates/config.json.j2').read_text())
 config=template.render(xray_deployment_mode='podman',xray_container_port=443,xray_sni='',xray_uuid='00000000-0000-4000-8000-000000000000',xray_short_ids=['deadbeefcafebabe'],xray_reality_private_key=private).encode()
-for mode,expected in [(0o600,False),(0o640,True)]:
-    container=subprocess.check_output(podman+['create']+flags+[image,'run','-test','-config','/candidate.json'],text=True).strip()
-    try:
-        buffer=io.BytesIO()
-        with tarfile.open(fileobj=buffer,mode='w') as archive:
-            info=tarfile.TarInfo('candidate.json');info.size=len(config);info.uid=0;info.gid=65532;info.mode=mode
-            archive.addfile(info,io.BytesIO(config))
-        subprocess.run(podman+['cp','-',container+':/'],input=buffer.getvalue(),check=True,capture_output=True)
-        subprocess.run(podman+['start','--attach',container],capture_output=True,text=True)
-        state=json.loads(subprocess.check_output(podman+['inspect',container],text=True))[0]['State']
-        assert (state['ExitCode']==0)==expected,'Pinned Podman image configuration permissions differ'
+with tempfile.TemporaryDirectory(prefix='podman-permissions-') as directory:
+    candidate=pathlib.Path(directory)/'candidate.json'
+    candidate.write_bytes(config);candidate.chmod(0o600)
+    subprocess.run(['sudo','-n','chown','0:65532',str(candidate)],check=True)
+    for mode,expected in [(0o600,False),(0o640,True)]:
+        subprocess.run(['sudo','-n','chmod',oct(mode)[2:],str(candidate)],check=True)
+        result=subprocess.run(podman+['run','--rm']+flags+['--mount',
+            'type=bind,src='+str(candidate)+',dst=/candidate.json,readonly',
+            image,'run','-test','-config','/candidate.json'],capture_output=True,text=True)
+        assert (result.returncode==0)==expected,'Pinned Podman image configuration permissions differ at '+oct(mode)
         print('Podman',image,'configuration',oct(mode),'expected acceptance',expected,'PASS')
-    finally:
-        subprocess.run(podman+['rm',container],check=True,capture_output=True)
